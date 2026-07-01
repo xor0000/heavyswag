@@ -1,3 +1,6 @@
+[tool.uv.build-backend]
+module-root = "src"
+
 [project]
 name = "heavyswag"
 version = "0.1.0"
@@ -5,7 +8,79 @@ description = "The hype python web framework"
 requires-python = ">=3.12"
 dependencies = []
 
-[tool.uv.build-backend]
-module-root = "src"
-
 [dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.20",
+    "wps>=0.1.0",
+    "zensical>=0.0.46",
+]
+
+[tool.pytest.ini_options]
+addopts = [
+    "-v",
+    "--color=yes",
+    "--cache-clear",
+    "--cov=src",
+    "--cov-report=term-missing",
+]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+files = ["src/heavyswag/"]
+exclude = ".venv"
+python_version = "3.12"
+strict = true
+pretty = true
+follow_imports = "silent"
+
+no_implicit_optional = true
+check_untyped_defs = true
+show_error_codes = true
+implicit_reexport = false
+namespace_packages = false
+ignore_missing_imports = true
+
+warn_unused_ignores = true
+warn_return_any = true
+warn_redundant_casts = true
+
+allow_untyped_calls = true
+allow_subclassing_any = true
+allow_untyped_decorators = true
+
+disallow_incomplete_defs = true
+disallow_any_unimported = false
+
+
+[tool.ruff]
+src = ["src", "tests"]
+target-version = "py312"
+line-length = 79
+fix = true
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D",  # pydocstyle
+    "S101",   # assert allowed
+    "PGH003", # code error false positive
+    "E721",   # direct isinstance checks
+    "PT012",  # pytest.raises style
+    "E501",   # ignore line too long
+    "COM812", # missing trailing comma in multiline literal
+    "UP046",  # checks specifications in generic classes.
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+line-ending = "lf"
+quote-style = "double"
+indent-style = "space"
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
