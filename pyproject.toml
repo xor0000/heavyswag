@@ -17,6 +17,9 @@ dev = [
     "ruff>=0.15.20",
     "wps>=0.1.0",
     "zensical>=0.0.46",
+    "bandit>=1.9.4",
+    "semgrep>=1.156.0",
+    "zizmor>=1.23.1",
 ]
 
 [tool.pytest.ini_options]

@@ -1,0 +1,56 @@
+name: Checks
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+  pull_request:
+    branches:
+      - master
+      - dev
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint & type-check (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - run: uv sync --group dev
+      - run: uv run ruff check src
+      - run: uv run ruff format --check src
+      - run: uv run mypy . --strict
+
+  security:
+    name: Security checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          python-version: "3.13"
+
+      - run: uv sync --group dev
+      - run: uv run bandit -c pyproject.toml -r src
+      - run: uv run semgrep scan --config auto --error src
+      - run: uv run zizmor --min-severity high .
