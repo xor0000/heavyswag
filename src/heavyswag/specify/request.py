@@ -3,6 +3,7 @@ from typing import NamedTuple
 
 class Body[Arg](NamedTuple): ...
 
+
 class Query[Arg](NamedTuple): ...
 
 

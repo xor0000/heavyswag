@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     type Scalar = int | float | str | bool | UUID | NamedTuple
     type Body = Scalar | Sequence[Scalar]
 
+
 @dataclass(slots=True, kw_only=True)
 class Response:
     status_code: int = 200
