@@ -1,11 +1,11 @@
+from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from heavyswag.specify.cookie import Cookie
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from typing import NamedTuple
+    from typing import NamedTuple, Sequence
     from uuid import UUID
 
     type Scalar = int | float | str | bool | UUID | NamedTuple
