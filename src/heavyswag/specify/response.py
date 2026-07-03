@@ -1,15 +1,12 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import NamedTuple
+from uuid import UUID
 
 from heavyswag.specify.cookie import Cookie
 
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from typing import NamedTuple
-    from uuid import UUID
-
-    type Scalar = int | float | str | bool | UUID | NamedTuple
-    type Body = Scalar | Sequence[Scalar]
+type Scalar = int | float | str | bool | UUID | NamedTuple
+type Body = Scalar | Sequence[Scalar]
 
 
 @dataclass(slots=True, kw_only=True)
