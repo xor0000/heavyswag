@@ -37,6 +37,33 @@ jobs:
       - run: uv run ruff format --check src
       - run: uv run mypy . --strict
 
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - run: uv sync --group dev
+
+      - name: Run tests with coverage
+        run: |
+          uv run pytest \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-fail-under=90
+
   security:
     name: Security checks
     runs-on: ubuntu-latest
