@@ -1,16 +1,25 @@
-from collections.abc import Sequence
-from typing import Any
+from heavyswag.specify.request import Request
 
-from heavyswag.exceptions import SwagException
 
 class Serializer:
-    @classmethod
-    def serialize_json(cls, message: bytes) -> Any:
-        ...
+    def serialize_request(self, content: bytes) -> Request:
+        message = content.split(b"\r\n")
 
-    @classmethod
-    def serialize_py(cls, object: Any) -> bytes:
-        if isinstance(object, Sequence):
-            return f"[{', '.join(map(str, object))}]".encode()
+        headers = {}
+        cookies = {}
+        for header in message[1:]:
+            if header == b"":
+                break
+            key, value = [x.decode() for x in header.split(b":")]
+            if key == "Cookie":
+                request_cookies = value.split(";")
+                for cookie in request_cookies:
+                    cookie_key, cookie_value = cookie.split("=")
+                    cookies[cookie_key.strip()] = cookie_value.strip()
 
-        raise SwagException(f"Undefined serialize strategy for {type(object)}")
+            headers[key] = value.strip()
+
+        return Request(
+            headers=headers,
+            cookies=cookies,
+        )
