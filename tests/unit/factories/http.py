@@ -1,5 +1,7 @@
-from http import HTTPMethod
+import json
+from typing import Any
 
+from heavyswag.http import Method
 from tests.unit.factories.common import generate_random_string
 
 
@@ -8,7 +10,8 @@ class RequestFactory:
     def build(
         cls,
         url: str = generate_random_string(),
-        method: HTTPMethod = HTTPMethod.GET,
+        method: Method | str = Method.GET,
+        body: dict[str, Any] | None = None,
         cookies: dict[str, str] | None = None,
         headers: dict[str, str] | None = None,
     ) -> str:
@@ -27,7 +30,7 @@ class RequestFactory:
             if cookies is not None
             else ""
         )
+        if body is None:
+            body = {}
 
-        return (
-            f"{method.value} /{url} HTTP/1.1\r\n{http_headers}{http_cookies}"
-        )
+        return f"{method.value if isinstance(method, Method) else method} {url} HTTP/1.1\r\n{http_headers}{http_cookies}\r\n{json.dumps(body)}"

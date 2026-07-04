@@ -3,18 +3,23 @@ import pytest
 from heavyswag.exceptions import (
     UnprocessableCookieFormatError,
     UnprocessableHeadersFormatError,
+    UnsupportedHTTPMethodError,
 )
+from heavyswag.http import Method
 from heavyswag.internal._serializer import Serializer
 from heavyswag.specify.request import Request
 from tests.unit.factories import RequestFactory
 
 
 def test_serialize_http_request_without_cookies_and_headers() -> None:
-    request = RequestFactory.build().encode()
+    request = RequestFactory.build(url="/users").encode()
 
     serializer = Serializer()
 
     assert serializer.serialize_request(request) == Request(
+        url="/users",
+        method=Method.GET,
+        body={},
         headers={},
         cookies={},
     )
@@ -22,6 +27,7 @@ def test_serialize_http_request_without_cookies_and_headers() -> None:
 
 def test_serialize_http_request_with_cookies_and_headers() -> None:
     request = RequestFactory.build(
+        url="/users",
         headers={
             "header-a": "header-1",
             "header-b": "header-2",
@@ -37,6 +43,9 @@ def test_serialize_http_request_with_cookies_and_headers() -> None:
     serializer = Serializer()
 
     assert serializer.serialize_request(request) == Request(
+        url="/users",
+        method=Method.GET,
+        body={},
         headers={
             "header-a": "header-1",
             "header-b": "header-2",
@@ -79,3 +88,30 @@ def test_serialize_http_request_with_wrong_cookie_value_format() -> None:
 
     with pytest.raises(UnprocessableCookieFormatError):
         assert serializer.serialize_request(request)
+
+
+def test_serialize_http_request_with_unsupported_http_method() -> None:
+    request = RequestFactory.build(method="PODSFG").encode()
+
+    serializer = Serializer()
+
+    with pytest.raises(UnsupportedHTTPMethodError):
+        assert serializer.serialize_request(request)
+
+
+def test_serialize_http_request_with_json_body() -> None:
+    request = RequestFactory.build(
+        url="/users",
+        method="POST",
+        body={"body_param_a": 1, "body_param_b": 2, "body_param_c": 3},
+    ).encode()
+
+    serializer = Serializer()
+
+    assert serializer.serialize_request(request) == Request(
+        url="/users",
+        method=Method.POST,
+        body={"body_param_a": 1, "body_param_b": 2, "body_param_c": 3},
+        headers={},
+        cookies={},
+    )

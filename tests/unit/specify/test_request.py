@@ -1,5 +1,6 @@
 from typing import get_args, get_origin, get_type_hints
 
+from heavyswag.http import Method
 from heavyswag.specify.request import Body, Query, Request
 
 
@@ -26,6 +27,12 @@ def test_query_marker_extraction() -> None:
 
 
 def test_request_shape() -> None:
-    req = Request(headers={"content-type": "application/json"}, cookies={})
+    req = Request(
+        url="/users",
+        method=Method.GET,
+        body={},
+        headers={"content-type": "application/json"},
+        cookies={},
+    )
     assert req.headers["content-type"] == "application/json"
     assert req.cookies == {}
