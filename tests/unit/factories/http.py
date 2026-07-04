@@ -13,7 +13,12 @@ class RequestFactory:
         headers: dict[str, str] | None = None,
     ) -> str:
         http_headers = (
-            "\r\n".join([f"{key}: {value}" for key, value in headers.items()])
+            (
+                "\r\n".join(
+                    [f"{key}: {value}" for key, value in headers.items()]
+                )
+            )
+            + "\r\n"
             if headers is not None
             else ""
         )
@@ -23,4 +28,6 @@ class RequestFactory:
             else ""
         )
 
-        return f"{method.value} /{url} HTTP/1.1\r\n{http_headers}\r\n{http_cookies}"
+        return (
+            f"{method.value} /{url} HTTP/1.1\r\n{http_headers}{http_cookies}"
+        )
