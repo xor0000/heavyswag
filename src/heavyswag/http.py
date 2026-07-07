@@ -1,13 +1,13 @@
-from enum import StrEnum
+from enum import Enum, auto
 
 
-class Method(StrEnum):
-    CONNECT = "CONNECT"
-    DELETE = "DELETE"
-    GET = "GET"
-    HEAD = "HEAD"
-    OPTIONS = "OPTIONS"
-    PATCH = "PATCH"
-    POST = "POST"
-    PUT = "PUT"
-    TRACE = "TRACE"
+class Method(Enum):
+    CONNECT = auto()
+    DELETE = auto()
+    GET = auto()
+    HEAD = auto()
+    OPTIONS = auto()
+    PATCH = auto()
+    POST = auto()
+    PUT = auto()
+    TRACE = auto()

@@ -1,4 +1,4 @@
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 from heavyswag.http import Method
 
@@ -9,9 +9,11 @@ class Body[Arg](NamedTuple): ...
 class Query[Arg](NamedTuple): ...
 
 
-class Request(NamedTuple):
+class Preambule(NamedTuple):
     url: str
     method: Method
-    body: dict[str, Any]
+
+
+class Request(NamedTuple):
     headers: dict[str, str]
     cookies: dict[str, str]
