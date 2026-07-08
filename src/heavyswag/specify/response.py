@@ -1,16 +1,11 @@
-from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import NamedTuple
-from uuid import UUID
 
+from heavyswag.constants import ALLOWED_TYPES
 from heavyswag.specify.cookie import Cookie
-
-type Scalar = int | float | str | bool | UUID | NamedTuple
-type Body = Scalar | Sequence[Scalar]
 
 
 @dataclass(slots=True, kw_only=True)
-class Response:
+class Response[Body: ALLOWED_TYPES | None]:
     status_code: int = 200
     header: set[tuple[str, str]] | None = None
     cookie: set[Cookie] | None = None

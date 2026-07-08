@@ -3,7 +3,7 @@ from heavyswag.specify.response import Response
 
 
 def test_set_cookie() -> None:
-    response = Response()
+    response = Response[None]()
 
     assert response.cookie is None
 
@@ -18,7 +18,7 @@ def test_set_cookie() -> None:
 
 
 def test_attach_header() -> None:
-    response = Response()
+    response = Response[None]()
 
     assert response.header is None
 
@@ -33,7 +33,7 @@ def test_attach_header() -> None:
 
 
 def test_set_body() -> None:
-    response = Response()
+    response = Response[str]()
 
     assert response.body is None
 
