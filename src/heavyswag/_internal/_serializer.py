@@ -84,6 +84,9 @@ class Serializer:
 
                         value_end = self._offset
 
+                        if self._request[self._offset] == SC:
+                            self._offset += 2
+
                         cookies[self._request[key_start:key_end].decode()] = (
                             self._request[value_start:value_end].decode()
                         )
