@@ -43,17 +43,12 @@ class Serializer:
         )
 
     def serialize_request(self) -> Request:
-        prev_end = curr_end = False
-
         headers: dict[str, str] = {}
         cookies: dict[str, str] = {}
 
         value_end = self._offset - 1
         key_start = key_end = value_start = self._offset
-        while not (prev_end and curr_end):
-            prev_end = self._request[self._offset - 1] == LF
-            curr_end = self._request[self._offset] == CR
-
+        while self._request[self._offset : self._offset + 2] != b"\r\n":
             if self._request[self._offset] == CN:
                 key_start = value_end + 2
                 key_end = self._offset

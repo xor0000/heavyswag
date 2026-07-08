@@ -1,4 +1,3 @@
-
 from heavyswag._internal._serializer import Serializer
 from heavyswag.http import Method
 from heavyswag.specify.request import Preambule, Request
