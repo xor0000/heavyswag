@@ -1,7 +1,7 @@
 import json
 from typing import Any, Final
 
-from heavyswag.http import Method
+from heavyswag.constants import HttpMethod, MethodType
 from heavyswag.specify.request import Preambule, Request
 
 CR: Final = ord("\r")
@@ -10,6 +10,11 @@ SP: Final = ord(" ")
 DC: Final = ord("=")
 SC: Final = ord(";")
 CN: Final = ord(":")
+
+METHODS: Final[dict[str, HttpMethod | MethodType]] = {
+    **HttpMethod.__members__,
+    **MethodType.__members__,
+}
 
 
 class Serializer:
@@ -23,7 +28,7 @@ class Serializer:
         while self._request[method_end] != SP:
             method_end += 1
 
-        method = Method[(self._request[method_start:method_end]).decode()]
+        method = METHODS[self._request[method_start:method_end].decode()]
 
         url_start = url_end = method_end + 1
 
