@@ -1,5 +1,5 @@
 class HeavySwagError(Exception):
-    pass
+    """Base HeavySwagError"""
 
 
 class IncludedRouterError(HeavySwagError):

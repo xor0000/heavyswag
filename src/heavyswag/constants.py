@@ -10,6 +10,14 @@ class HttpMethod(IntEnum):
     PATCH = 3
     PUT = 4
     DELETE = 5
+    QUERY = 6
+
+
+class MethodType(IntEnum):
+    CONNECT = 1
+    HEAD = 2
+    OPTIONS = 3
+    TRACE = 4
 
 
 type Scalar = int | float | str | bool | UUID | NamedTuple

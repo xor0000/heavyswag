@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from heavyswag.http import Method
+from heavyswag.constants import HttpMethod, MethodType
 
 
 class Body[Arg](NamedTuple): ...
@@ -11,7 +11,7 @@ class Query[Arg](NamedTuple): ...
 
 class Preambule(NamedTuple):
     url: str
-    method: Method
+    method: HttpMethod | MethodType
 
 
 class Request(NamedTuple):
