@@ -4,3 +4,7 @@ class HeavySwagError(Exception):
 
 class IncludedRouterError(HeavySwagError):
     """Router include error"""
+
+
+class RouteTreeError(HeavySwagError):
+    """Route tree construction error"""
