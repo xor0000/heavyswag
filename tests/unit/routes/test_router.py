@@ -42,19 +42,19 @@ def test_added_routes() -> None:
 def test_added_router() -> None:
     main_router = HeavyRouter("/")
 
-    main_router.included_router(HeavyRouter("/users"))
+    main_router.include_router(HeavyRouter("/users"))
 
     with pytest.raises(IncludedRouterError):
-        main_router.included_router(HeavyRouter("/"))
+        main_router.include_router(HeavyRouter("/"))
 
     with pytest.raises(IncludedRouterError):
-        main_router.included_router(HeavyRouter("/users"))
+        main_router.include_router(HeavyRouter("/users"))
 
     with pytest.raises(IncludedRouterError):
-        main_router.included_router(HeavyRouter("/users/{user_id}"))
+        main_router.include_router(HeavyRouter("/users/{user_id}"))
 
     with pytest.raises(IncludedRouterError):
-        main_router.included_router(HeavyRouter("accounts"))
+        main_router.include_router(HeavyRouter("accounts"))
 
 
 @pytest.mark.asyncio

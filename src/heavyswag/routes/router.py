@@ -104,7 +104,7 @@ class HeavyRouter:
     ]:
         return self._add_route(path, HttpMethod.DELETE)
 
-    def included_router(self, router: Self) -> None:
+    def include_router(self, router: Self) -> None:
         prefix = router.prefix
 
         if self.prefix == prefix:
