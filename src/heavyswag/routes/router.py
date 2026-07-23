@@ -158,16 +158,3 @@ class HeavyRouter:
 
     def __hash__(self) -> int:
         return hash(self.prefix)
-
-
-class BaseRouteClass:
-    async def handle[
-        InDTO: tuple[ALLOWED_TYPES, ...] | None,
-        OutDTO: tuple[ALLOWED_TYPES] | None,
-        **P,
-    ](
-        self,
-        request: Request,  # noqa: ARG002
-        controller: Controller[InDTO, OutDTO, P],  # type: ignore[type-var] # noqa: ARG002
-    ) -> Response[OutDTO]:  # type: ignore[type-var]
-        return Response()

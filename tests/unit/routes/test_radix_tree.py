@@ -2,7 +2,7 @@ import pytest
 
 from heavyswag.constants import HttpMethod
 from heavyswag.errors import RouteTreeError
-from heavyswag.routes.redix_tree import CompressedRadixTree
+from heavyswag.routes.radix_tree import CompressedRadixTree
 from heavyswag.routes.router import HeavyRouter
 from heavyswag.specify.request import Request
 

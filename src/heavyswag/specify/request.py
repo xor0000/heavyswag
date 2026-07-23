@@ -12,6 +12,7 @@ class Query[Arg](NamedTuple): ...
 class Preambule(NamedTuple):
     url: str
     method: HttpMethod | MethodType
+    query: str = ""
 
 
 class Request(NamedTuple):

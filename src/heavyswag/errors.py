@@ -8,3 +8,7 @@ class IncludedRouterError(HeavySwagError):
 
 class RouteTreeError(HeavySwagError):
     """Route tree construction error"""
+
+
+class SerializationError(HeavySwagError):
+    """Request/response serialization error"""
