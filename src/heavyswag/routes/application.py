@@ -283,5 +283,5 @@ def _reconstruct_head(scope: Scope) -> bytes:
 
 
 def run_app(app: HeavySwag) -> _HS_Server:
-    """Инициализация приложение и запуск"""
+    """Application initialization and startup"""
     return _HS_Server(app_=app)
