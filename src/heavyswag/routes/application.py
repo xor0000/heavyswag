@@ -1,12 +1,14 @@
-from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from functools import partial
-from typing import (
-    Any,
+from collections.abc import (
     AsyncIterator,
     Awaitable,
     Callable,
     Mapping,
     Sequence,
+)
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from functools import partial
+from typing import (
+    Any,
     get_type_hints,
 )
 
@@ -18,7 +20,6 @@ from heavyswag.middlewares.base import (
     build_middlewares,
 )
 from heavyswag.middlewares.setups.cors import CORSMiddleware
-
 from heavyswag.middlewares.setups.err_handler import (
     ErrorHandler,
     ErrorHandlingMiddleware,
@@ -203,9 +204,7 @@ class _HS_Server:
 
         controller = matched.route.controller
         dto_type = _dto_type(controller)
-        query_params = context.serializer.parse_query(
-            context.preambule.query
-        )
+        query_params = context.serializer.parse_query(context.preambule.query)
         dto = context.serializer.serialize_dto(
             dto_type, matched.params, query_params
         )

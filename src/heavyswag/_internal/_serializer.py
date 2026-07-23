@@ -293,9 +293,7 @@ class Serializer:
 
     def _coerce(self, value: Any, target_type: Any) -> Any:  # noqa: ANN401
         origin = get_origin(target_type) or target_type
-        matches_origin = isinstance(origin, type) and isinstance(
-            value, origin
-        )
+        matches_origin = isinstance(origin, type) and isinstance(value, origin)
         # bool is an int subclass in Python; without this guard a
         # JSON `true`/`false` would silently pass as a valid int.
         is_bool_leak = origin is int and isinstance(value, bool)

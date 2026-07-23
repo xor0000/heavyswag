@@ -1,10 +1,10 @@
 from logging import Logger, getLogger
-from typing import NamedTuple, Callable, Awaitable, Any, Sequence
 from time import perf_counter
+from typing import Any
 
-from heavyswag.constants import MethodType
+from heavyswag.middlewares.base import CallNext, RequestContext
 from heavyswag.specify.response import Response
-from heavyswag.middlewares.base import RequestContext, CallNext
+
 
 class LoggingMiddleware:
     __slots__ = ("_logger",)

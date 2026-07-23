@@ -1,8 +1,10 @@
-from typing import NamedTuple, Callable, Awaitable, Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from heavyswag.constants import MethodType
+from heavyswag.middlewares.base import CallNext, RequestContext
 from heavyswag.specify.response import Response
-from heavyswag.middlewares.base import RequestContext, CallNext
+
 
 class CORSMiddleware:
     __slots__ = (
@@ -50,9 +52,7 @@ class CORSMiddleware:
         )
         response.attach_header("Vary", "Origin")
         if self._allow_credentials:
-            response.attach_header(
-                "Access-Control-Allow-Credentials", "true"
-            )
+            response.attach_header("Access-Control-Allow-Credentials", "true")
 
         return response
 
@@ -81,9 +81,7 @@ class CORSMiddleware:
                 "Access-Control-Allow-Headers", self._allow_headers
             )
         if self._allow_credentials:
-            response.attach_header(
-                "Access-Control-Allow-Credentials", "true"
-            )
+            response.attach_header("Access-Control-Allow-Credentials", "true")
 
         return response
 

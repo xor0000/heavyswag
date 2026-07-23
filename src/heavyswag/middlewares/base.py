@@ -1,5 +1,6 @@
+from collections.abc import Awaitable, Callable, Sequence
 from functools import partial
-from typing import Any, Awaitable, Callable, NamedTuple, Protocol, Sequence
+from typing import Any, NamedTuple, Protocol
 
 from heavyswag._internal._serializer import Serializer
 from heavyswag.specify.request import Preambule, Request

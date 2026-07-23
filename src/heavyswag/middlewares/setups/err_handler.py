@@ -1,4 +1,5 @@
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from heavyswag.errors import HeavySwagError, SerializationError
 from heavyswag.middlewares.base import CallNext, RequestContext
