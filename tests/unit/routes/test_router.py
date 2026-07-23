@@ -1,7 +1,7 @@
 import pytest
 
 from heavyswag.errors import IncludedRouterError
-from heavyswag.routes.router import BaseRouteClass, HeavyRouter
+from heavyswag.routes.router import HeavyRouter
 from heavyswag.specify.request import Request
 
 
@@ -55,13 +55,3 @@ def test_added_router() -> None:
 
     with pytest.raises(IncludedRouterError):
         main_router.include_router(HeavyRouter("accounts"))
-
-
-@pytest.mark.asyncio
-async def test_route_class() -> None:
-    async def controller(_: Request, __: tuple[()]) -> None:
-        return None
-
-    req = Request({}, {})
-
-    await BaseRouteClass().handle(req, controller)
