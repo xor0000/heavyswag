@@ -1,6 +1,17 @@
-from typing import get_args, get_origin, get_type_hints
+from typing import Annotated, get_args, get_origin, get_type_hints
 
-from heavyswag.specify.request import Body, Query, Request
+from heavyswag.specify.request import (
+    Body,
+    BodyMarker,
+    Query,
+    QueryMarker,
+    Request,
+)
+
+
+def test_marker_repr() -> None:
+    assert repr(BodyMarker()) == "<Marker 'body'>"
+    assert repr(QueryMarker()) == "<Marker 'query'>"
 
 
 def test_body_marker_extraction() -> None:
@@ -8,10 +19,12 @@ def test_body_marker_extraction() -> None:
 
     def controller(dto: Body[A]) -> None: ...
 
-    hint = get_type_hints(controller)["dto"]
+    hint = get_type_hints(controller, include_extras=True)["dto"]
+    target, *metadata = get_args(hint)
 
-    assert get_origin(hint) is Body
-    assert get_args(hint) == (A,)
+    assert get_origin(hint) is Annotated
+    assert target is A
+    assert any(isinstance(marker, BodyMarker) for marker in metadata)
 
 
 def test_query_marker_extraction() -> None:
@@ -19,10 +32,12 @@ def test_query_marker_extraction() -> None:
 
     def controller(dto: Query[A]) -> None: ...
 
-    hint = get_type_hints(controller)["dto"]
+    hint = get_type_hints(controller, include_extras=True)["dto"]
+    target, *metadata = get_args(hint)
 
-    assert get_origin(hint) is Query
-    assert get_args(hint) == (A,)
+    assert get_origin(hint) is Annotated
+    assert target is A
+    assert any(isinstance(marker, QueryMarker) for marker in metadata)
 
 
 def test_request_shape() -> None:

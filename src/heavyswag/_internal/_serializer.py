@@ -1,12 +1,17 @@
 import json
 from datetime import datetime
-from typing import Any, Final, get_args, get_origin, get_type_hints
+from typing import Annotated, Any, Final, get_args, get_origin, get_type_hints
 from uuid import UUID
 
 from heavyswag.constants import ALLOWED_TYPES, HttpMethod, MethodType
 from heavyswag.errors import SerializationError
 from heavyswag.specify.cookie import Cookie
-from heavyswag.specify.request import Body, Preambule, Query, Request
+from heavyswag.specify.request import (
+    BodyMarker,
+    Preambule,
+    QueryMarker,
+    Request,
+)
 from heavyswag.specify.response import Response
 
 CR: Final = ord("\r")
@@ -146,32 +151,38 @@ class Serializer:
         query_params: dict[str, str],
     ) -> T:
         """Build the controller's `dto` (2nd argument) from the
-        request. Each field of `dto_type` is resolved by its
-        annotation:
+        request. Each field of `dto_type` is resolved by the `Marker`
+        carried in its `Annotated[X, ...]` metadata:
           - `Body[X]`  -> looked up in the JSON body, coerced to X
           - `Query[X]` -> looked up in the '?' query string, coerced to X
           - anything else -> a path parameter (from the matched route)
         """
-        hints = get_type_hints(dto_type)
+        hints = get_type_hints(dto_type, include_extras=True)
         body: dict[str, Any] | None = None
         values: dict[str, Any] = {}
 
         for name, hint in hints.items():
-            origin = get_origin(hint)
+            target, metadata = self._split_annotated(hint)
 
-            if origin is Body:
+            if any(isinstance(item, BodyMarker) for item in metadata):
                 if body is None:
                     body = self.serialize_json()
                 raw = self._field(body, name, dto_type)
-                values[name] = self._coerce(raw, get_args(hint)[0])
-            elif origin is Query:
+            elif any(isinstance(item, QueryMarker) for item in metadata):
                 raw = self._field(query_params, name, dto_type)
-                values[name] = self._coerce(raw, get_args(hint)[0])
             else:
                 raw = self._field(path_params, name, dto_type)
-                values[name] = self._coerce(raw, hint)
+
+            values[name] = self._coerce(raw, target)
 
         return dto_type(**values)
+
+    def _split_annotated(self, hint: Any) -> tuple[Any, tuple[Any, ...]]:  # noqa: ANN401
+        if get_origin(hint) is Annotated:
+            target, *metadata = get_args(hint)
+            return target, tuple(metadata)
+
+        return hint, ()
 
     def parse_query(self, query: str) -> dict[str, str]:
         if not query:

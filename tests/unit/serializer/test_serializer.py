@@ -166,7 +166,7 @@ def test_serialize_dto_query_param() -> None:
 
     dto = serializer.serialize_dto(_QueryOnly, {}, {"flag": "true"})
 
-    assert dto == _QueryOnly(flag=True)  # type: ignore[arg-type]
+    assert dto == _QueryOnly(flag=True)
 
 
 def test_serialize_dto_body_field() -> None:
@@ -174,7 +174,7 @@ def test_serialize_dto_body_field() -> None:
 
     dto = serializer.serialize_dto(_BodyOnly, {}, {})
 
-    assert dto == _BodyOnly(name="max")  # type: ignore[arg-type]
+    assert dto == _BodyOnly(name="max")
 
 
 def test_serialize_dto_mixed_fields() -> None:
@@ -182,7 +182,7 @@ def test_serialize_dto_mixed_fields() -> None:
 
     dto = serializer.serialize_dto(_Mixed, {"item_id": "5"}, {"flag": "1"})
 
-    expected = _Mixed(item_id=5, flag=True, name="max")  # type: ignore[arg-type]
+    expected = _Mixed(item_id=5, flag=True, name="max")
     assert dto == expected
 
 
@@ -212,7 +212,7 @@ def test_serialize_dto_parses_body_once_for_multiple_fields() -> None:
 
     dto = serializer.serialize_dto(_TwoBodyFields, {}, {})
 
-    assert dto == _TwoBodyFields(a="1", b="2")  # type: ignore[arg-type]
+    assert dto == _TwoBodyFields(a="1", b="2")
 
 
 def test_parse_query_empty() -> None:
