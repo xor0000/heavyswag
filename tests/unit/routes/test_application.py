@@ -206,7 +206,7 @@ async def test_http_reads_multi_chunk_body() -> None:
 
     @router.post("/echo")
     async def echo(_: Request, dto: Payload) -> str:
-        return dto.text  # type: ignore[return-value]
+        return dto.text
 
     app = HeavySwag(main_router=router)
     server = run_app(app)
