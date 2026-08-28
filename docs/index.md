@@ -26,12 +26,8 @@ from heavyswag.specify import Request
 
 router = HeavyRouter("/")
 
-
-class Empty(NamedTuple): ...  # (1)!
-
-
 @router.get("/")
-async def index(request: Request, dto: Empty) -> str:  # (2)!
+async def index(request: Request, dto: tuple[()]) -> str:  # (1)!
     return "Welcome!"
 
 
@@ -45,9 +41,9 @@ if __name__ == "__main__":
 
 1.  HeavySwag is a strictly typed framework: every controller must declare an
     input DTO as its 2nd argument, even for routes that take no input at all.
-    An empty `NamedTuple` is the idiomatic "nothing to parse" DTO.
+    An empty `Tuple` is the idiomatic "nothing to parse" DTO.
 
-2.  Every controller has exactly the same shape:
+    Every controller has exactly the same shape:
 
     ```python
     async def controller(request: Request, dto: SomeDTO) -> SomeOutput: ...
@@ -61,6 +57,7 @@ if __name__ == "__main__":
     - the **return type** can be a plain value (it gets wrapped into a
       `Response` automatically) or a `Response[...]` if you need to control
       status codes, headers or cookies (see [Responses](#responses)).
+
 
 Run it and hit it:
 
@@ -174,7 +171,7 @@ Response` for you:
 
 ```python
 @router.get("/")
-async def index(request: Request, dto: Empty) -> str:
+async def index(request: Request, dto: tuple[()]) -> str:
     return "Welcome!"
 ```
 
@@ -210,7 +207,7 @@ users_router = HeavyRouter("/users")
 _DB: dict[UUID, dict[str, str]] = {}
 
 
-class Empty(NamedTuple): ...
+class Empty(NamedTuple): ... # (1)!
 
 
 class UserId(NamedTuple):
@@ -231,6 +228,10 @@ class UpdateUser(NamedTuple):
 class ListUsers(NamedTuple):
     search: Query[str]
 ```
+
+
+1.  You can also create an empty structure in a similar way.
+
 
 === "Create"
 
@@ -340,7 +341,7 @@ Register your own exception → `(status_code, message)` mapping:
 
 ```python
 from heavyswag.errors import HeavySwagError
-from heavyswag.middlewares.setups.err_handler import ErrorHandler
+from heavyswag.middlewares import ErrorHandler
 
 
 class OutOfStockError(HeavySwagError):
@@ -386,8 +387,8 @@ you add runs closer to your controllers, after those three:
 
 ```python
 from heavyswag import HeavySwag
-from heavyswag.middlewares.setups.cors import CORSMiddleware
-from heavyswag.middlewares.setups.request_logging import LoggingMiddleware
+from heavyswag.middlewares import CORSMiddleware
+from heavyswag.middlewares import LoggingMiddleware
 
 app = HeavySwag(
     main_router=main_router,
@@ -407,8 +408,8 @@ app = HeavySwag(
 ```python
 from typing import Any
 
-from heavyswag.middlewares.base import CallNext, RequestContext
-from heavyswag.specify.response import Response
+from heavyswag.middlewares import CallNext, RequestContext
+from heavyswag.specify import Response
 
 
 class ApiKeyMiddleware:
@@ -448,18 +449,28 @@ from heavyswag.specify import Cookie, Request, Response
 
 @router.post("/login")
 async def login(request: Request, dto: Empty) -> Response[str]:
-    response: Response[str] = Response()
-    response.set_body("logged in")
-    response.set_cookie(
-        Cookie(key="session_id", value="abc123", http_only=True, max_age=3600)
+    return Response(  # (1)!
+        cookie={
+            Cookie(key="session_id", value="abc123", http_only=True, max_age=3600),
+        },
+        body="logged in",
     )
-    return response
 
 
 @router.get("/profile")
 async def profile(request: Request, dto: Empty) -> str:
     session_id = request.cookies.get("session_id")
     return f"session: {session_id}" if session_id else "not logged in"
+```
+
+1. or initialize the response and then populate it
+```python
+response: Response[str] = Response()
+response.set_body("logged in")
+response.set_cookie(
+    Cookie(key="session_id", value="abc123", http_only=True, max_age=3600)
+)
+return response
 ```
 
 `Cookie` defaults to `path="/"`, `http_only=True` and `same_site=Lax` —

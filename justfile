@@ -9,5 +9,5 @@ lint:
 test:
     uv run pytest .
 
-just doc:
+doc:
     zensical serve

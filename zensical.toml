@@ -29,6 +29,13 @@ site_author = "<your name here>"
 # Read more: https://zensical.org/docs/setup/basics/#site_url
 site_url = "https://xor0000.github.io/heavyswag/"
 
+# repo_url renders a repository link/button in the site header. repo_name
+# is optional — Zensical derives "GitHub" from the host automatically when
+# it's left unset; set explicitly here just for clarity in this file.
+# Read more: https://zensical.org/docs/setup/repository/
+repo_url = "https://github.com/xor0000/heavyswag"
+repo_name = "GitHub"
+
 # The copyright notice appears in the page footer and can contain an HTML
 # fragment.
 #
