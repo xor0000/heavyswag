@@ -54,10 +54,12 @@ HeavySwag has no in-memory `BackgroundTasks`-style primitive. The community pref
 
 === "Jobify"
 
-    Lorem
+    A lightweight async job scheduler for Python. Tasks are plain functions decorated
+    with `@jobs.task`; retry, timeout, and durability are configured per task, no
+    separate server or worker process required — jobs persist via SQLite by default.
 
     !!! INFO
-          Great if you want to keep the infrastructure minimal
+        Great if you want to keep the infrastructure minimal
 
 
 ## Async tasks {: #async-tasks }
@@ -366,11 +368,127 @@ async def create_order(_: Request, dto: CreateOrder) -> UUID:
 
 
 === "Jobify"
+
     Installation
-    
+
     ```shell
     uv add jobify
     ```
+
+    A step with a side effect is just a plain function decorated with `@jobs.task` —
+    retry policy and timeout live on the decorator itself, there's no separate
+    "activity" concept. Orchestration (the retry/rollback sequence from the diagram
+    above) is just another task that pushes the steps and waits for them:
+
+    ```python title="app/tasks.py"
+    import asyncio
+    from uuid import UUID
+
+    from jobify import Jobify, JobFailedError, SmartRetry
+
+    jobs = Jobify()
+
+    STEP_RETRY = SmartRetry(retries=3, initial_delay=1.0, backoff_factor=2.0)
+
+
+    @jobs.task(retry=STEP_RETRY, timeout=10)
+    async def send_email_by_user_id(user_id: UUID, message: str) -> None: ...
+
+
+    @jobs.task(retry=STEP_RETRY, timeout=10)
+    async def reserve_order_on_warehouse(user_id: UUID) -> None: ...
+
+
+    @jobs.task(timeout=10)
+    async def refund_order(user_id: UUID) -> None:
+        """Compensation: refunds the order if the warehouse never responded"""
+
+
+    @jobs.task(retry=STEP_RETRY, timeout=10)
+    async def push_purchase_notification(user_id: UUID) -> None: ...
+
+
+    @jobs.task(durable=True)  # (1)!
+    async def create_order_workflow(user_id: UUID) -> None:
+        receipt = await send_email_by_user_id.push(
+            user_id, "payment received, here's your receipt: ..."
+        )
+        await receipt.wait()
+
+        reservation = await reserve_order_on_warehouse.push(user_id)
+
+        try:
+            await reservation  # (2)!
+        except JobFailedError:
+            refund = await refund_order.push(user_id)
+            notice = await send_email_by_user_id.push(
+                user_id, "couldn't fulfill the order, refunded"
+            )
+            await asyncio.gather(refund, notice)  # (3)!
+        else:
+            notify = await push_purchase_notification.push(user_id)
+            shipped = await send_email_by_user_id.push(user_id, "order shipped")
+            await asyncio.gather(notify, shipped)
+    ```
+
+    1. `durable=True` is actually the default — spelled out here just to make the
+       guarantee visible: this job survives a crash or restart.
+    2. `await job` is shorthand for `await job.wait()` + `job.result()`.
+    3. Each `Job` returned by `push()` is itself awaitable — awaiting it waits for the
+       task's result and returns it, or raises the error if the task failed. `gather`
+       just does that for both jobs at once, concurrently.
+
+    `OrderService.create` fires the workflow and returns immediately:
+
+    ```python title="app/service.py"
+    from uuid import UUID, uuid4
+
+    from app.tasks import create_order_workflow
+
+
+    class OrderService:
+        async def create(self, user_id: UUID) -> UUID:
+            order_id = uuid4()
+            await create_order_workflow.push(user_id)  # (1)!
+            return order_id
+    ```
+
+    1. `push()` enqueues and returns immediately — it doesn't wait for the task to run.
+
+    !!! tip "No separate worker process needed"
+        jobs execute inside the same app process, and the default `SQLiteStorage`
+        persists them so a crash or redeploy doesn't lose an in-flight order.
+
+    Wire the `Jobify` instance into the app's lifespan
+
+    ```python
+    from heavyswag import HeavyRouter, HeavySwag, run_app
+    from app.service import OrderService
+    from app.tasks import jobs
+
+    router = HeavyRouter("/")
+
+
+    @router.post("/create-order")
+    async def create_order(_: Request, dto: CreateOrder) -> UUID:
+        user_id = dto.user_id
+        order_id = await OrderService().create(user_id=user_id)
+        return Response(status_code=202, body=order_id)
+
+
+    async def lifespan(app: HeavySwag) -> AsyncIterator[None]:
+        async with jobs:
+            yield None
+
+
+    app = HeavySwag(main_router=router, lifespan=lifespan)
+
+    if __name__ == "__main__":
+        import uvicorn
+
+        uvicorn.run(run_app(app), host="127.0.0.1", port=8000)
+    ```
+
 
 !!! warning
     Keep in mind that these libraries are built for io-bound work — if you try to run
@@ -436,8 +554,39 @@ We won't cover every scheduling option, e.g. every 15 minutes — just the gener
     `CreateOrderWorkflow` above — the schedule just triggers it on a cron.
 
 === "Jobify"
-    ```python
+
+    The simplest way is a `cron=` parameter right on the task itself — no separate
+    schedule object to register at startup:
+
+    ```python title="app/tasks.py"
+    from jobify import Cron, Jobify, MisfirePolicy
+
+    jobs = Jobify()
+
+
+    @jobs.task(
+        name="orders:cleanup-expired",
+        cron=Cron("0 3 * * *", misfire_policy=MisfirePolicy.SKIP),  # every day at 03:00
+        timeout=300,
+    )
+    async def cleanup_expired_orders() -> None:
+        """Cancels orders that were never paid"""
     ```
+
+    Jobify also supports setting the schedule imperatively at runtime, closer to how
+    Temporal's `create_schedule` works, via `task.schedule().cron(...)`:
+
+    ```python
+    await cleanup_expired_orders.schedule().cron(
+        cron="0 3 * * *",
+        job_id="cleanup-expired-orders",  # required, used to update/replace later or deduplication
+    )
+    ```
+
+    The decorator form is the source of truth for code and is restored as-is every time the application
+    restarts, which is good for fixed schedules. The imperative form, on the other hand, is the source
+    of truth for storage, keyed by job_id, and is intended for schedules that you create, update,
+    or remove while the application is running.
 
 
 ## Patterns for background tasks
