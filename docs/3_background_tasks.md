@@ -438,14 +438,6 @@ async def create_order(_: Request, dto: CreateOrder) -> UUID:
        task's result and returns it, or raises the error if the task failed. `gather`
        just does that for both jobs at once, concurrently.
 
-    Wire the `Jobify` instance into the app's lifespan
-
-    ```python
-    async def lifespan(app: HeavySwag) -> AsyncIterator[None]:
-        async with jobs:
-            yield None
-    ```
-
     `OrderService.create` fires the workflow and returns immediately:
 
     ```python title="app/service.py"
@@ -456,20 +448,47 @@ async def create_order(_: Request, dto: CreateOrder) -> UUID:
 
     class OrderService:
         async def create(self, user_id: UUID) -> UUID:
-            order_id = uuid4()  # (1)!
-            await create_order_workflow.push(user_id)  # (2)!
+            order_id = uuid4()
+            await create_order_workflow.push(user_id)  # (1)!
             return order_id
     ```
 
-    1. Computed here, not inside `create_order_workflow` — same reason as in the
-       Temporal example: a task can be retried, so anything non-repeatable has to be
-       computed once, outside the retryable code.
-    2. `push()` enqueues and returns immediately — it doesn't wait for the task to run
+    1. `push()` enqueues and returns immediately — it doesn't wait for the task to run.
 
     !!! tip "No separate worker process needed"
-        Unlike Temporal, there's no server or `worker.py` to run — jobs execute inside
-        the same app process, and the default `SQLiteStorage` persists them so a crash
-        or redeploy doesn't lose an in-flight order.
+        jobs execute inside the same app process, and the default `SQLiteStorage`
+        persists them so a crash or redeploy doesn't lose an in-flight order.
+
+    Wire the `Jobify` instance into the app's lifespan
+
+    ```python
+    from heavyswag import HeavyRouter, HeavySwag, run_app
+    from app.service import OrderService
+    from app.tasks import jobs
+
+    router = HeavyRouter("/")
+
+
+    @router.post("/create-order")
+    async def create_order(_: Request, dto: CreateOrder) -> UUID:
+        user_id = dto.user_id
+        order_id = await OrderService().create(user_id=user_id)
+        return Response(status_code=202, body=order_id)
+
+
+    async def lifespan(app: HeavySwag) -> AsyncIterator[None]:
+        async with jobs:
+            yield None
+
+
+    app = HeavySwag(main_router=router, lifespan=lifespan)
+
+    if __name__ == "__main__":
+        import uvicorn
+
+        uvicorn.run(run_app(app), host="127.0.0.1", port=8000)
+    ```
+
 
 !!! warning
     Keep in mind that these libraries are built for io-bound work — if you try to run
