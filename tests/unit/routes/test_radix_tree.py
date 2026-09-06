@@ -1,10 +1,12 @@
+from typing import NamedTuple
+
 import pytest
 
 from heavyswag.constants import HttpMethod
 from heavyswag.errors import RouteTreeError
 from heavyswag.routes.radix_tree import CompressedRadixTree
 from heavyswag.routes.router import HeavyRouter
-from heavyswag.specify.request import Request
+from heavyswag.specify.request import Body, Query, Request
 
 
 async def _controller(_: Request, __: tuple[()]) -> None:
@@ -242,3 +244,51 @@ def test_invalid_path_parameters_raise() -> None:
     duplicate_name.get("/{id}/sub/{id}")(_controller)
     with pytest.raises(RouteTreeError):
         CompressedRadixTree(duplicate_name)
+
+
+def test_dto_with_default_value_raises() -> None:
+    class _WithDefault(NamedTuple):
+        value: Body[str] | None = None
+
+    async def controller(_: Request, __: _WithDefault) -> None:
+        return None
+
+    router = HeavyRouter("/")
+    router.get("/x")(controller)
+
+    with pytest.raises(
+        RouteTreeError, match="must not declare default values"
+    ):
+        CompressedRadixTree(router)
+
+
+def test_dto_optional_path_param_raises() -> None:
+    class _OptionalPath(NamedTuple):
+        item_id: str | None
+
+    async def controller(_: Request, __: _OptionalPath) -> None:
+        return None
+
+    router = HeavyRouter("/")
+    router.get("/{item_id}")(controller)
+
+    with pytest.raises(RouteTreeError, match="must not be Optional"):
+        CompressedRadixTree(router)
+
+
+def test_dto_optional_body_and_query_are_allowed() -> None:
+    class _Optional(NamedTuple):
+        value1: Body[str] | None
+        value2: Query[str] | None
+        value3: str
+
+    async def controller(_: Request, __: _Optional) -> None:
+        return None
+
+    router = HeavyRouter("/")
+    router.get("/{value3}")(controller)
+
+    tree = CompressedRadixTree(router)
+
+    matched = tree.search(HttpMethod.GET, "/abc")
+    assert matched is not None

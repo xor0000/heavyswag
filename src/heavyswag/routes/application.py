@@ -9,9 +9,9 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from functools import partial
 from typing import (
     Any,
-    get_type_hints,
 )
 
+from heavyswag._internal._dto import dto_type as _dto_type
 from heavyswag._internal._serializer import Serializer
 from heavyswag.constants import HttpMethod
 from heavyswag.middlewares.base import (
@@ -243,17 +243,6 @@ class _HS_Server:  # noqa: N801
         response: Response[str] = Response(status_code=400)
         response.set_body("Unknown HTTP method")
         return response
-
-
-def _dto_type(controller: Any) -> type[Any]:  # noqa: ANN401
-    """The controller's 2nd parameter type — the `dto` that
-    `Serializer.serialize_dto` needs to build (1st is always
-    `Request`, supplied directly from the parsed request). Reads
-    `__annotations__` order directly instead of `inspect.signature`.
-    """
-    hints = get_type_hints(controller)
-    names = [name for name in hints if name != "return"]
-    return hints[names[1]]  # type: ignore[no-any-return]
 
 
 def _reconstruct_head(scope: Scope) -> bytes:
