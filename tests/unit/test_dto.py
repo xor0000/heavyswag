@@ -1,3 +1,4 @@
+import sys
 from typing import NamedTuple
 
 import pytest
@@ -57,7 +58,13 @@ def test_validate_dto_type_rejects_optional_path_param() -> None:
 
 
 def test_validate_dto_type_allows_empty_dto() -> None:
-    validate_dto_type(tuple[()])
+    class _Empty(NamedTuple):
+        pass
+
+    validate_dto_type(_Empty)
+
+    if sys.version_info >= (3, 14):
+        validate_dto_type(tuple[()])
 
 
 def test_dto_type_extracts_second_param() -> None:
