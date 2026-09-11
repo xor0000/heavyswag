@@ -22,6 +22,30 @@ Two kinds of checks apply on top of that:
   raises `SerializationError`, which the default `ErrorHandler` turns into
   `400 Bad Request`.
 
+## Empty DTOs
+
+A controller that takes no input at all still has to declare a DTO. The
+portable way to spell "nothing to parse" is an empty `NamedTuple`:
+
+```python
+class Empty(NamedTuple): ...
+
+
+@router.get("/")
+async def index(request: Request, dto: Empty) -> str:
+    return "Welcome!"
+```
+
+!!! warning "`tuple[()]` only works on Python 3.14+"
+    `tuple[()]` as a DTO requires Python 3.14. On 3.12 and 3.13,
+    `typing.get_type_hints(tuple[()])` raises `TypeError: tuple[()] is not
+    a module, class, method, or function`, so the route dies while
+    `HeavySwag` builds the radix tree — at startup, before it serves a
+    single request.
+
+    An empty `NamedTuple` behaves identically on every supported version and
+    keeps the shape checks honest.
+
 ## No default values
 
 A DTO field must never declare a default:
