@@ -9,11 +9,15 @@ from heavyswag.routes.router import HeavyRouter
 from heavyswag.specify.request import Body, Query, Request
 
 
-async def _controller(_: Request, __: tuple[()]) -> None:
+class _Empty(NamedTuple):
+    pass
+
+
+async def _controller(_: Request, __: _Empty) -> None:
     return None
 
 
-async def _other_controller(_: Request, __: tuple[()]) -> None:
+async def _other_controller(_: Request, __: _Empty) -> None:
     return None
 
 
