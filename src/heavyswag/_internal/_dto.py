@@ -1,3 +1,4 @@
+from types import UnionType
 from typing import (
     Annotated,
     Any,
@@ -12,6 +13,12 @@ from heavyswag.errors import RouteTreeError
 from heavyswag.specify.request import BodyMarker, QueryMarker
 
 _NoneType = type(None)
+
+# Before 3.14, `str | None` and `Optional[str]` are two distinct
+# objects: `get_origin` reports `types.UnionType` for the first and
+# `typing.Union` for the second. 3.14 merged them (`types.UnionType
+# is typing.Union`), so this set collapses to a single member there.
+_UNION_ORIGINS = frozenset({Union, UnionType})
 
 
 class DTOField(NamedTuple):
@@ -34,7 +41,7 @@ def resolve_dto_fields(dto_type: type) -> list[DTOField]:
         hint = raw_hint
         optional = False
 
-        if get_origin(hint) is Union:
+        if get_origin(hint) in _UNION_ORIGINS:
             args = get_args(hint)
             non_none = tuple(arg for arg in args if arg is not _NoneType)
             if len(non_none) == 1 and len(args) == 2:  # noqa: PLR2004
