@@ -43,6 +43,11 @@ if __name__ == "__main__":
     input DTO as its 2nd argument, even for routes that take no input at all.
     An empty `Tuple` is the idiomatic "nothing to parse" DTO.
 
+    !!! warning "`tuple[()]` requires Python 3.14"
+        On 3.12 and 3.13 it fails at startup — use an empty `NamedTuple`
+        (`class Empty(NamedTuple): ...`) instead. See
+        [Empty DTOs](2_validation.md#empty-dtos).
+
     Every controller has exactly the same shape:
 
     ```python

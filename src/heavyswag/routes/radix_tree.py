@@ -1,5 +1,6 @@
 from typing import Any, NamedTuple
 
+from heavyswag._internal._dto import dto_type, validate_dto_type
 from heavyswag.constants import HttpMethod
 from heavyswag.errors import RouteTreeError
 from heavyswag.routes.router import HeavyRouter, Route
@@ -125,6 +126,7 @@ class CompressedRadixTree:
 
     def _insert(self, path: str, route: AnyRoute) -> None:
         self._validate(path)
+        validate_dto_type(dto_type(route.controller))
 
         node = self._root
         offset = 0

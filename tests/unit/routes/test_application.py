@@ -4,6 +4,7 @@ from typing import NamedTuple
 
 import pytest
 
+from heavyswag._internal._dto import dto_type
 from heavyswag.errors import HeavySwagError
 from heavyswag.middlewares.setups.cors import CORSMiddleware
 from heavyswag.middlewares.setups.err_handler import (
@@ -13,7 +14,6 @@ from heavyswag.middlewares.setups.err_handler import (
 from heavyswag.middlewares.setups.request_logging import LoggingMiddleware
 from heavyswag.routes.application import (
     HeavySwag,
-    _dto_type,
     _HS_Server,
     _noop_lifespan,
     _reconstruct_head,
@@ -95,7 +95,7 @@ def test_dto_type_extracts_second_param() -> None:
     async def controller(_request: Request, _dto: _Empty) -> str:
         return "x"
 
-    assert _dto_type(controller) is _Empty
+    assert dto_type(controller) is _Empty
 
 
 def test_reconstruct_head_without_query() -> None:

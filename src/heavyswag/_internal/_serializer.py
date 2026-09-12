@@ -1,8 +1,9 @@
 import json
 from datetime import datetime
-from typing import Annotated, Any, Final, get_args, get_origin, get_type_hints
+from typing import Any, Final, get_args, get_origin
 from uuid import UUID
 
+from heavyswag._internal._dto import resolve_dto_fields
 from heavyswag.constants import ALLOWED_TYPES, HttpMethod, MethodType
 from heavyswag.errors import SerializationError
 from heavyswag.specify.cookie import Cookie
@@ -148,7 +149,7 @@ class Serializer:
         self,
         dto_type: type[T],
         path_params: dict[str, str],
-        query_params: dict[str, str],
+        query_params: dict[str, list[str]],
     ) -> T:
         """Build the controller's `dto` (2nd argument) from the
         request. Each field of `dto_type` is resolved by the `Marker`
@@ -156,43 +157,82 @@ class Serializer:
           - `Body[X]`  -> looked up in the JSON body, coerced to X
           - `Query[X]` -> looked up in the '?' query string, coerced to X
           - anything else -> a path parameter (from the matched route)
+
+        `Body[X] | None` / `Query[X] | None` fields are optional.
+        For `Body`, an explicit JSON `null` resolves to `None`, but
+        an absent key is still a bad request. For `Query` (which has
+        no `null` of its own), an absent key resolves to `None`.
+        `validate_dto_type` guarantees path fields are never optional
+        and that no field carries a default, so neither case is
+        handled here.
+
+        A repeated query key (`?a=1&a=2`) collects into `Query[list[X]]`,
+        each item coerced to `X`. A non-list `Query[X]` field is a bad
+        request if the key repeats — there's no sane single value to
+        pick.
         """
-        hints = get_type_hints(dto_type, include_extras=True)
         body: dict[str, Any] | None = None
         values: dict[str, Any] = {}
 
-        for name, hint in hints.items():
-            target, metadata = self._split_annotated(hint)
+        for field in resolve_dto_fields(dto_type):
+            is_body = any(
+                isinstance(item, BodyMarker) for item in field.metadata
+            )
+            is_query = any(
+                isinstance(item, QueryMarker) for item in field.metadata
+            )
 
-            if any(isinstance(item, BodyMarker) for item in metadata):
+            if is_body:
                 if body is None:
                     body = self.serialize_json()
-                raw = self._field(body, name, dto_type)
-            elif any(isinstance(item, QueryMarker) for item in metadata):
-                raw = self._field(query_params, name, dto_type)
+                raw = self._field(body, field.name, dto_type)
+                values[field.name] = (
+                    raw if raw is None else self._coerce(raw, field.target)
+                )
+            elif is_query:
+                if field.optional and field.name not in query_params:
+                    values[field.name] = None
+                    continue
+                raw_values = self._field(query_params, field.name, dto_type)
+                values[field.name] = self._coerce_query(
+                    field.name, raw_values, field.target, dto_type
+                )
             else:
-                raw = self._field(path_params, name, dto_type)
-
-            values[name] = self._coerce(raw, target)
+                raw = self._field(path_params, field.name, dto_type)
+                values[field.name] = self._coerce(raw, field.target)
 
         return dto_type(**values)
 
-    def _split_annotated(self, hint: Any) -> tuple[Any, tuple[Any, ...]]:  # noqa: ANN401
-        if get_origin(hint) is Annotated:
-            target, *metadata = get_args(hint)
-            return target, tuple(metadata)
+    def _coerce_query(
+        self,
+        name: str,
+        raw_values: list[str],
+        target_type: Any,  # noqa: ANN401
+        dto_type: type,
+    ) -> Any:  # noqa: ANN401
+        if get_origin(target_type) is list:
+            (item_type,) = get_args(target_type)
+            return [self._coerce(value, item_type) for value in raw_values]
 
-        return hint, ()
+        if len(raw_values) > 1:
+            msg = (
+                f"Query parameter '{name}' for {dto_type.__name__} was "
+                f"repeated {len(raw_values)} times, expected a single "
+                "value."
+            )
+            raise SerializationError(msg)
 
-    def parse_query(self, query: str) -> dict[str, str]:
+        return self._coerce(raw_values[0], target_type)
+
+    def parse_query(self, query: str) -> dict[str, list[str]]:
         if not query:
             return {}
 
-        params: dict[str, str] = {}
+        params: dict[str, list[str]] = {}
         for pair in query.split("&"):
             name, _, value = pair.partition("=")
             if name:
-                params[name] = value
+                params.setdefault(name, []).append(value)
 
         return params
 

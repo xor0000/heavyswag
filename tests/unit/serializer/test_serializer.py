@@ -153,6 +153,36 @@ class _TwoBodyFields(NamedTuple):
     b: Body[str]
 
 
+class _OptionalBody(NamedTuple):
+    name: Body[str] | None
+
+
+class _OptionalQuery(NamedTuple):
+    flag: Query[bool] | None
+
+
+class _QueryScalarTypes(NamedTuple):
+    as_str: Query[str]
+    as_int: Query[int]
+    as_float: Query[float]
+    as_bool: Query[bool]
+    as_uuid: Query[UUID]
+    as_datetime: Query[datetime]
+    as_bytes: Query[bytes]
+
+
+class _QueryListStr(NamedTuple):
+    tags: Query[list[str]]
+
+
+class _QueryListInt(NamedTuple):
+    ids: Query[list[int]]
+
+
+class _OptionalQueryListStr(NamedTuple):
+    tags: Query[list[str]] | None
+
+
 def test_serialize_dto_path_param() -> None:
     serializer = Serializer(b"")
 
@@ -164,9 +194,121 @@ def test_serialize_dto_path_param() -> None:
 def test_serialize_dto_query_param() -> None:
     serializer = Serializer(b"")
 
-    dto = serializer.serialize_dto(_QueryOnly, {}, {"flag": "true"})
+    dto = serializer.serialize_dto(_QueryOnly, {}, {"flag": ["true"]})
 
     assert dto == _QueryOnly(flag=True)
+
+
+def test_serialize_dto_query_supports_scalar_types() -> None:
+    serializer = Serializer(b"")
+    query_params = {
+        "as_str": ["hello"],
+        "as_int": ["5"],
+        "as_float": ["5.5"],
+        "as_bool": ["true"],
+        "as_uuid": ["12345678-1234-5678-1234-567812345678"],
+        "as_datetime": ["2026-01-01T12:00:00"],
+        "as_bytes": ["hi"],
+    }
+
+    dto = serializer.serialize_dto(_QueryScalarTypes, {}, query_params)
+
+    assert dto == _QueryScalarTypes(
+        as_str="hello",
+        as_int=5,
+        as_float=5.5,
+        as_bool=True,
+        as_uuid=UUID("12345678-1234-5678-1234-567812345678"),
+        as_datetime=datetime(2026, 1, 1, 12, 0, 0),  # noqa: DTZ001
+        as_bytes=b"hi",
+    )
+
+
+def test_serialize_dto_query_scalar_field_rejects_repeated_key() -> None:
+    """`?a="123"&a="123"&...` against a non-list `Query[X]` field
+    has no single sane value to pick, so it's a bad request instead
+    of silently keeping the first or last one.
+    """
+    serializer = Serializer(b"")
+    query_params = serializer.parse_query(
+        'a="123"&a="123"&a="123"&a="123"&a="123"'
+    )
+
+    class _ScalarField(NamedTuple):
+        a: Query[str]
+
+    with pytest.raises(SerializationError, match="repeated 5 times"):
+        serializer.serialize_dto(_ScalarField, {}, query_params)
+
+
+def test_serialize_dto_query_list_str_collects_repeated_key() -> None:
+    """`?a="123"&a="123"&...` against `Query[list[str]]` collects
+    every repeat, each coerced to `str`.
+    """
+    serializer = Serializer(b"")
+    query_params = serializer.parse_query(
+        'a="123"&a="123"&a="123"&a="123"&a="123"'
+    )
+
+    class _ListField(NamedTuple):
+        a: Query[list[str]]
+
+    dto = serializer.serialize_dto(_ListField, {}, query_params)
+
+    assert dto == _ListField(a=['"123"'] * 5)
+
+
+def test_serialize_dto_query_list_int_collects_repeated_key_coerced() -> None:
+    """The same repeated key against `Query[list[int]]` coerces
+    each item to `int` instead of leaving them as strings.
+    """
+    serializer = Serializer(b"")
+    query_params = serializer.parse_query(
+        "ids=123&ids=123&ids=123&ids=123&ids=123"
+    )
+
+    dto = serializer.serialize_dto(_QueryListInt, {}, query_params)
+
+    assert dto == _QueryListInt(ids=[123, 123, 123, 123, 123])
+
+
+def test_serialize_dto_query_list_str_single_value_is_still_a_list() -> None:
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(_QueryListStr, {}, {"tags": ["value"]})
+
+    assert dto == _QueryListStr(tags=["value"])
+
+
+def test_serialize_dto_query_list_float_coerces_each_item() -> None:
+    class _ListFloat(NamedTuple):
+        values: Query[list[float]]
+
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(
+        _ListFloat, {}, {"values": ["1.5", "2.5", "3.5"]}
+    )
+
+    assert dto == _ListFloat(values=[1.5, 2.5, 3.5])
+
+
+def test_serialize_dto_optional_query_list_str_present_value() -> None:
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(
+        _OptionalQueryListStr, {}, {"tags": ["a", "b"]}
+    )
+
+    assert dto == _OptionalQueryListStr(tags=["a", "b"])
+
+
+def test_serialize_dto_optional_query_list_str_missing_key_is_none() -> None:
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(_OptionalQueryListStr, {}, {})
+
+    assert dto == _OptionalQueryListStr(tags=None)
 
 
 def test_serialize_dto_body_field() -> None:
@@ -180,7 +322,7 @@ def test_serialize_dto_body_field() -> None:
 def test_serialize_dto_mixed_fields() -> None:
     serializer = Serializer(b'{"name": "max"}')
 
-    dto = serializer.serialize_dto(_Mixed, {"item_id": "5"}, {"flag": "1"})
+    dto = serializer.serialize_dto(_Mixed, {"item_id": "5"}, {"flag": ["1"]})
 
     expected = _Mixed(item_id=5, flag=True, name="max")
     assert dto == expected
@@ -207,6 +349,45 @@ def test_serialize_dto_missing_body_field_raises() -> None:
         serializer.serialize_dto(_BodyOnly, {}, {})
 
 
+def test_serialize_dto_optional_body_explicit_null_is_none() -> None:
+    serializer = Serializer(b'{"name": null}')
+
+    dto = serializer.serialize_dto(_OptionalBody, {}, {})
+
+    assert dto == _OptionalBody(name=None)
+
+
+def test_serialize_dto_optional_body_missing_key_raises() -> None:
+    serializer = Serializer(b"{}")
+
+    with pytest.raises(SerializationError, match="Missing field 'name'"):
+        serializer.serialize_dto(_OptionalBody, {}, {})
+
+
+def test_serialize_dto_optional_body_present_value_is_coerced() -> None:
+    serializer = Serializer(b'{"name": "max"}')
+
+    dto = serializer.serialize_dto(_OptionalBody, {}, {})
+
+    assert dto == _OptionalBody(name="max")
+
+
+def test_serialize_dto_optional_query_missing_key_is_none() -> None:
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(_OptionalQuery, {}, {})
+
+    assert dto == _OptionalQuery(flag=None)
+
+
+def test_serialize_dto_optional_query_present_value_is_coerced() -> None:
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(_OptionalQuery, {}, {"flag": ["true"]})
+
+    assert dto == _OptionalQuery(flag=True)
+
+
 def test_serialize_dto_parses_body_once_for_multiple_fields() -> None:
     serializer = Serializer(b'{"a": "1", "b": "2"}')
 
@@ -224,19 +405,25 @@ def test_parse_query_empty() -> None:
 def test_parse_query_single_pair() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.parse_query("a=1") == {"a": "1"}
+    assert serializer.parse_query("a=1") == {"a": ["1"]}
 
 
 def test_parse_query_multiple_pairs() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.parse_query("a=1&b=2") == {"a": "1", "b": "2"}
+    assert serializer.parse_query("a=1&b=2") == {"a": ["1"], "b": ["2"]}
 
 
 def test_parse_query_pair_without_value() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.parse_query("flag") == {"flag": ""}
+    assert serializer.parse_query("flag") == {"flag": [""]}
+
+
+def test_parse_query_repeated_key_collects_all_values() -> None:
+    serializer = Serializer(b"")
+
+    assert serializer.parse_query("a=1&a=2&a=3") == {"a": ["1", "2", "3"]}
 
 
 def test_wrap_response_passthrough() -> None:
