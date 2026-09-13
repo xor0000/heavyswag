@@ -507,7 +507,8 @@ from contextlib import asynccontextmanager
 
 from heavyswag import HeavySwag
 
-import jobs.send_event_to_kafka as task
+from app import jobs.send_event_to_kafka as task
+from app import main_router
 
 
 @asynccontextmanager
