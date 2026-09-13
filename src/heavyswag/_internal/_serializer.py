@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Final, get_args, get_origin
 from uuid import UUID
 
-from heavyswag._internal._dto import resolve_dto_fields
+from heavyswag._internal._dto import is_namedtuple, resolve_dto_fields
 from heavyswag.constants import ALLOWED_TYPES, HttpMethod, MethodType
 from heavyswag.errors import SerializationError
 from heavyswag.specify.cookie import Cookie
@@ -327,7 +327,7 @@ class Serializer:
                 for key, item in value._asdict().items()
             }
 
-        if isinstance(value, list | tuple):
+        if isinstance(value, list | tuple | set | frozenset):
             return [self._to_jsonable(item) for item in value]
 
         if isinstance(value, dict):
@@ -350,6 +350,13 @@ class Serializer:
             raise SerializationError(msg) from None
 
     def _coerce(self, value: Any, target_type: Any) -> Any:  # noqa: ANN401
+        if is_namedtuple(target_type):
+            if isinstance(value, dict):
+                return self._coerce_namedtuple(value, target_type)
+
+            msg = f"Cannot coerce {value!r} into {target_type!r}."
+            raise SerializationError(msg)
+
         origin = get_origin(target_type) or target_type
         matches_origin = isinstance(origin, type) and isinstance(value, origin)
         # bool is an int subclass in Python; without this guard a
@@ -364,6 +371,28 @@ class Serializer:
 
         msg = f"Cannot coerce {value!r} into {target_type!r}."
         raise SerializationError(msg)
+
+    def _coerce_namedtuple(
+        self,
+        value: dict[str, Any],
+        dto_type: type,
+    ) -> Any:  # noqa: ANN401
+        """Recursively build a `Body[NamedTuple]` field's target from
+        its nested JSON object. `validate_dto_type` guarantees every
+        field of `dto_type` is itself `Body[...]`, all the way down,
+        so each one is resolved the same way a top-level `Body` field
+        is: looked up by key, with an explicit JSON `null` passing
+        through as `None`.
+        """
+        values: dict[str, Any] = {}
+
+        for field in resolve_dto_fields(dto_type):
+            raw = self._field(value, field.name, dto_type)
+            values[field.name] = (
+                raw if raw is None else self._coerce(raw, field.target)
+            )
+
+        return dto_type(**values)
 
     def _coerce_str(self, raw: str, target_type: Any) -> Any:  # noqa: ANN401, PLR0911
         try:

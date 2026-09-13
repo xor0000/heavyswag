@@ -183,7 +183,264 @@ They just can't be `Optional` (see above) and can't be a `list[T]` — a path
 segment is one value, and there's no repeated-key mechanism for a URL path
 the way there is for a query string.
 
-!!! warning "Every declared field is still required"
-    Outside of the `Optional`/missing-key rules above, nothing changed: a
-    non-optional `Body`/`Query`/path field missing from the request is
-    `400 Bad Request` before your controller ever runs.
+### Path fields and `{name}` segments must match
+
+A DTO's path (bare) fields and the route's own `{name}` segments are
+checked against each other at startup, in both directions:
+
+- A path field with no matching segment in the route can never be
+  resolved:
+
+    ```python
+    class Bad(NamedTuple):
+        value: str  # (1)!
+
+
+    @router.post("/")
+    async def create(request: Request, dto: Bad) -> None: ...
+    ```
+
+    1.  Rejected at startup with `RouteTreeError: DTO 'Bad' field 'value' is
+        a path parameter, but '/' has no '{value}' segment.`
+
+- A `{name}` segment with no matching field is a value the route accepts
+  but no DTO field ever reads:
+
+    ```python
+    class Empty(NamedTuple): ...
+
+
+    @router.post("/{value}")
+    async def create(request: Request, dto: Empty) -> None: ...  # (1)!
+    ```
+
+    1.  Rejected at startup with `RouteTreeError: Path '/{value}' declares
+        path parameter '{value}', but DTO 'Empty' has no matching field.`
+
+## Nested bodies
+
+A `Body[T]` field's `T` doesn't have to be a scalar — it can be another
+`NamedTuple`, letting a JSON body nest arbitrarily deep. Its own fields
+don't need markers — a nested `NamedTuple`, unlike a top-level DTO, has no
+path or query string to tell a bare field apart from a `Body[...]` one, so
+a plain type is enough:
+
+```python
+class Address(NamedTuple):
+    city: str
+    zip_code: str
+
+
+class CreateUser(NamedTuple):
+    name: Body[str]
+    address: Body[Address]
+
+
+@router.post("/users")
+async def create_user(request: Request, dto: CreateUser) -> str: ...
+```
+
+```json
+{"name": "Max", "address": {"city": "Berlin", "zip_code": "10115"}}
+```
+
+`serialize_dto` unwraps `Address` from the nested JSON object the same way
+it resolves a top-level `Body` field — recursively, so nesting can go as
+deep as you want. If the value at that key isn't a JSON object at all (a
+string, a number, `[1, 2]`, ...), that's a `400 Bad Request` at request
+time, not something the checks below could have caught up front.
+
+`Body[T]` also works on `Address`'s own fields — it's accepted, just
+redundant there:
+
+```python
+class Address(NamedTuple):
+    city: Body[str]
+    zip_code: Body[str]
+```
+
+### Only `NamedTuple` nests, and only without `Query`
+
+Two shape checks keep nesting from silently doing something a JSON object
+can't — both run once, at startup:
+
+- The target of a nested `Body[T]` must be a `NamedTuple`. A `dataclass` or
+  any other class is rejected:
+
+    ```python
+    @dataclass
+    class Address:
+        city: str
+
+
+    class Bad(NamedTuple):
+        address: Body[Address]  # (1)!
+    ```
+
+    1.  Rejected at startup with `RouteTreeError: DTO 'Bad' field 'address'
+        nests 'Address', which must be a NamedTuple.`
+
+- Nothing in that nested `NamedTuple` may be `Query[...]`, all the way
+  down — there's no query string inside a JSON object to resolve it from:
+
+    ```python
+    class Address(NamedTuple):
+        city: Body[str]
+        zip_code: Query[str]  # (1)!
+
+
+    class Bad(NamedTuple):
+        address: Body[Address]
+    ```
+
+    1.  Rejected at startup with `RouteTreeError: DTO 'Bad' field 'address'
+        nests 'Address', which must not use Query fields — there's no
+        query string inside a JSON body. A bare field or Body[X] are both
+        fine.`
+
+    `Address` is still perfectly valid on its own, as a top-level
+    (controller-facing) DTO — this rule only kicks in once it's nested
+    inside another DTO's `Body[...]` field.
+
+!!! tip "A bare field is fine inside a nested `Body`"
+    Unlike a top-level DTO, a nested one has no path or query string to
+    tell a bare field apart from a `Body[...]` one — both are just read
+    straight off the same JSON object:
+
+    ```python
+    class Address(NamedTuple):
+        city: Body[str]
+        zip_code: str  # no marker, and that's fine here
+    ```
+
+    This isn't just permitted, it's what makes
+    [reusing a request DTO as a nested response DTO](#response-dtos)
+    possible without writing a second, marker-free copy of the same shape.
+
+A path or query field can't be a `NamedTuple` either, nested or not — a URL
+path segment or a query value is always a single flat string:
+
+```python
+class Address(NamedTuple):
+    city: Body[str]
+
+
+class Bad(NamedTuple):
+    address: Address  # (1)!
+```
+
+1.  Rejected at startup with `RouteTreeError: DTO 'Bad' field 'address' is
+    a path parameter and must not be a NamedTuple.` (`query parameter` for
+    `Query[Address]`.)
+
+### `Body`/`Query` need a type parameter
+
+`Body` and `Query` are generic — writing one bare, without `[X]`, leaves
+the field's target as the marker's own unbound type variable, which
+`Serializer` could never turn a value into:
+
+```python
+class Bad(NamedTuple):
+    value: Body  # (1)!
+```
+
+1.  Rejected at startup with `RouteTreeError: DTO 'Bad' field 'value' uses
+    'Body' without a type parameter — write 'Body[X]' instead.`
+
+This is caught wherever it appears, including inside a nested
+`Body[NamedTuple]` target.
+
+## Response DTOs
+
+The type a controller *returns* — bare, or wrapped in `Response[...]` —
+follows a different rule than the input DTO above: it's always serialized
+whole into the response body, so there's no source to pick between. The
+usual, recommended shape is a plain, unmarked type:
+
+```python
+class UserOut(NamedTuple):
+    id: UUID
+    name: str
+
+
+@router.get("/users/{user_id}")
+async def get_user(request: Request, dto: UserId) -> UserOut: ...
+```
+
+`Body[T]` is also allowed on a response type — it's redundant there (a bare
+field and a `Body[T]` field serialize identically), but not rejected:
+
+```python
+class UserOut(NamedTuple):
+    id: Body[UUID]  # redundant, not wrong
+    name: str
+```
+
+!!! tip "Why allow a redundant marker at all?"
+    So a `NamedTuple` already used as a request DTO — `Body[...]` markers
+    and all — can be reused, unchanged, as a nested field of a response
+    DTO. No need to strip its markers just because it's now on the way
+    out:
+
+    ```python
+    class Address(NamedTuple):
+        city: Body[str]
+        zip_code: Body[str]
+
+
+    class UserOut(NamedTuple):
+        id: UUID
+        address: Address  # the same Address, reused as a nested response field
+
+
+    @router.post("/users")
+    async def create_user(request: Request, dto: Address) -> UserOut:
+        return UserOut(id=uuid4(), address=dto)
+    ```
+
+    `Address` keeps its `Body[...]` markers in both roles — nothing needs
+    to change about it to go from a request DTO to a nested response
+    field.
+
+    This isn't the recommended default — a dedicated, marker-free type for
+    `Address` is clearer about what actually goes out on the wire — but
+    it's a valid shortcut when the request and response shapes are
+    genuinely the same, and you'd rather not maintain two identical
+    `NamedTuple`s.
+
+`Query[T]` is the one marker that's never allowed on a response type,
+nested or not — a response has no query string to resolve it from:
+
+```python
+class Bad(NamedTuple):
+    id: Query[UUID]  # (1)!
+    name: str
+
+
+@router.get("/users/{user_id}")
+async def get_user(request: Request, dto: UserId) -> Bad: ...
+```
+
+1.  Rejected at startup with `RouteTreeError: DTO 'Bad' field 'id' has a
+    Query marker, but a response has no query string to resolve it from —
+    use a bare field or Body[X] instead.`
+
+The check follows nesting too — a `Query[...]` field buried inside an
+otherwise unmarked nested `NamedTuple` field is still caught, because that
+nested value ends up in the same response body:
+
+```python
+class Details(NamedTuple):
+    zip_code: Query[str]  # (1)!
+
+
+class Bad(NamedTuple):
+    details: Details
+```
+
+1.  `Bad` is rejected at startup for the same reason, even though `details`
+    itself carries no marker — the `Query[...]` only has to exist
+    *somewhere* in the nested shape.
+
+`Response[T]` is unwrapped before this check runs, so it always validates
+`T` — never `Response` itself.

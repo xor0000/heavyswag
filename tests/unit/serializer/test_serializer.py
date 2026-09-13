@@ -1,6 +1,7 @@
+import json
 from datetime import datetime
 from typing import NamedTuple
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -646,6 +647,23 @@ def test_coerce_generic_origin_passthrough() -> None:
     assert serializer._coerce([1, 2], list[int]) == [1, 2]  # noqa: SLF001
 
 
+def test_coerce_namedtuple_target_rejects_non_dict_value() -> None:
+    """A `Body[NamedTuple]` field's JSON value has to be an object —
+    `validate_dto_type` guarantees the *type* is nestable, but a
+    client can still send a string, number, or list where an object
+    was expected, and that's a per-request `SerializationError`, not
+    something the assembly-time shape check could have caught.
+    """
+
+    class _Inner(NamedTuple):
+        value: Body[str]
+
+    serializer = Serializer(b"")
+
+    with pytest.raises(SerializationError, match="Cannot coerce"):
+        serializer._coerce("not-an-object", _Inner)  # noqa: SLF001
+
+
 @pytest.mark.parametrize(
     ("raw", "target", "expected"),
     [
@@ -713,3 +731,135 @@ def test_coerce_str_unsupported_type_raises() -> None:
 
     with pytest.raises(SerializationError, match="Unsupported target type"):
         serializer._coerce_str("x", list)  # noqa: SLF001
+
+
+def test_to_jsonable_set_of_scalars() -> None:
+    serializer = Serializer(b"")
+
+    result = serializer._to_jsonable({1, 2, 3})  # noqa: SLF001
+
+    assert isinstance(result, list)
+    assert set(result) == {1, 2, 3}
+
+
+def test_to_jsonable_namedtuple_with_nested_list_tuple_and_set() -> None:
+    class Bag(NamedTuple):
+        tags: list[str]
+        ids: tuple[int, ...]
+        flags: set[str]
+
+    serializer = Serializer(b"")
+    value = Bag(tags=["a", "b"], ids=(1, 2), flags={"x", "y"})
+
+    result = serializer._to_jsonable(value)  # noqa: SLF001
+
+    assert result["tags"] == ["a", "b"]
+    assert result["ids"] == [1, 2]
+    assert isinstance(result["flags"], list)
+    assert set(result["flags"]) == {"x", "y"}
+
+
+def test_to_jsonable_deeply_nested_mixed_structure() -> None:
+    class Leaf(NamedTuple):
+        id: UUID
+        tags: set[str]
+
+    serializer = Serializer(b"")
+    leaf_id = uuid4()
+    value = {
+        "resorse": "page",
+        "kind": "Collection",
+        "items": [
+            Leaf(id=leaf_id, tags={"a"}),
+            (1, 2, {"nested": True}),
+        ],
+    }
+
+    result = serializer._to_jsonable(value)  # noqa: SLF001
+
+    assert result["resorse"] == "page"
+    assert result["kind"] == "Collection"
+    assert result["items"][0] == {"id": str(leaf_id), "tags": ["a"]}
+    assert result["items"][1] == [1, 2, {"nested": True}]
+
+
+def test_render_body_collection_response_shape() -> None:
+    class Item(NamedTuple):
+        id: int
+        labels: set[str]
+
+    serializer = Serializer(b"")
+    body = {
+        "resorse": "page",
+        "kind": "Collection",
+        "items": [Item(id=1, labels={"a", "b"}), Item(id=2, labels=set())],
+    }
+
+    rendered = json.loads(serializer.render_body(body))
+
+    assert rendered["resorse"] == "page"
+    assert rendered["kind"] == "Collection"
+    assert rendered["items"][0]["id"] == 1
+    assert set(rendered["items"][0]["labels"]) == {"a", "b"}
+    assert rendered["items"][1] == {"id": 2, "labels": []}
+
+
+def test_render_body_list_of_namedtuples_with_nested_collections() -> None:
+    class Row(NamedTuple):
+        name: str
+        scores: tuple[int, ...]
+        unique_tags: set[str]
+
+    serializer = Serializer(b"")
+    body = [
+        Row(name="a", scores=(1, 2, 3), unique_tags={"x"}),
+        Row(name="b", scores=(), unique_tags=set()),
+    ]
+
+    rendered = json.loads(serializer.render_body(body))
+
+    assert rendered[0]["name"] == "a"
+    assert rendered[0]["scores"] == [1, 2, 3]
+    assert set(rendered[0]["unique_tags"]) == {"x"}
+    assert rendered[1] == {"name": "b", "scores": [], "unique_tags": []}
+
+
+def test_serialize_dto_supports_deeply_nested_namedtuple_body() -> None:
+    """A `Body[NamedTuple]` field is resolved recursively: `serialize_dto`
+    doesn't stop at the outermost object, it keeps unwrapping into the
+    nested `NamedTuple` type until it bottoms out at `Body[str]` —
+    seven levels down for `G`.
+    """
+
+    class A(NamedTuple):
+        value: Body[str]
+
+    class B(NamedTuple):
+        value: Body[A]
+
+    class C(NamedTuple):
+        value: Body[B]
+
+    class D(NamedTuple):
+        value: Body[C]
+
+    class E(NamedTuple):
+        value: Body[D]
+
+    class F(NamedTuple):
+        value: Body[E]
+
+    class G(NamedTuple):
+        value: Body[F]
+
+    nested: object = "leaf"
+    for _ in range(7):
+        nested = {"value": nested}
+
+    serializer = Serializer(json.dumps(nested).encode())
+
+    dto = serializer.serialize_dto(G, {}, {})
+
+    assert dto == G(
+        value=F(value=E(value=D(value=C(value=B(value=A(value="leaf"))))))
+    )
