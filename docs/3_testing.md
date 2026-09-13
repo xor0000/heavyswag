@@ -30,8 +30,9 @@ client = run_test(app, base_url="http://test.example.com")
 
 ```python title="conftest.py"
 from httpx import AsyncClient
+from typing import AsyncGenerator
 
-import pytest
+import pytest_asyncio
 from heavyswag import run_test
 
 from my_service.delivery import app  # HeavySwag app
@@ -55,7 +56,7 @@ async def test_create_then_get_user(client: AsyncClient) -> None:
         "/users",
         json={"username": "pistachio17.2", "email": "pistachio@example.com"},
     )
-    assert = response.status_code == 201
+    assert response.status_code == 201
     user_id = response.text  # the CRUD example returns the id as-is
 
     check_response = await client.get(f"/users/{user_id}")
