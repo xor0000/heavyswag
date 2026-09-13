@@ -1,6 +1,13 @@
 from typing import Any, NamedTuple
 
-from heavyswag._internal._dto import dto_type, validate_dto_type
+from heavyswag._internal._dto import (
+    dto_path_param_names,
+    dto_type,
+    is_namedtuple,
+    output_dto_type,
+    validate_dto_type,
+    validate_output_dto_type,
+)
 from heavyswag.constants import HttpMethod
 from heavyswag.errors import RouteTreeError
 from heavyswag.routes.router import HeavyRouter, Route
@@ -125,8 +132,15 @@ class CompressedRadixTree:
         return f"{trimmed}{segment}"
 
     def _insert(self, path: str, route: AnyRoute) -> None:
-        self._validate(path)
-        validate_dto_type(dto_type(route.controller))
+        path_param_names = self._validate(path)
+
+        input_dto = dto_type(route.controller)
+        validate_dto_type(input_dto)
+        self._validate_path_params(path, input_dto, path_param_names)
+
+        output_type = output_dto_type(route.controller)
+        if is_namedtuple(output_type):
+            validate_output_dto_type(output_type)
 
         node = self._root
         offset = 0
@@ -198,7 +212,7 @@ class CompressedRadixTree:
             index += 1
         return index
 
-    def _validate(self, path: str) -> None:
+    def _validate(self, path: str) -> frozenset[str]:
         if not path.startswith("/"):
             msg = f"Path '{path}' must start with '/'."
             raise RouteTreeError(msg)
@@ -214,6 +228,34 @@ class CompressedRadixTree:
         seen_params: set[str] = set()
         for segment in path.split("/")[1:]:
             self._validate_segment(path, segment, seen_params)
+
+        return frozenset(seen_params)
+
+    def _validate_path_params(
+        self,
+        path: str,
+        input_dto: type,
+        path_param_names: frozenset[str],
+    ) -> None:
+        dto_names = dto_path_param_names(input_dto)
+
+        missing_in_path = sorted(dto_names - path_param_names)
+        if missing_in_path:
+            name = missing_in_path[0]
+            msg = (
+                f"DTO '{input_dto.__name__}' field '{name}' is a path "
+                f"parameter, but '{path}' has no '{{{name}}}' segment."
+            )
+            raise RouteTreeError(msg)
+
+        missing_in_dto = sorted(path_param_names - dto_names)
+        if missing_in_dto:
+            name = missing_in_dto[0]
+            msg = (
+                f"Path '{path}' declares path parameter '{{{name}}}', but "
+                f"DTO '{input_dto.__name__}' has no matching field."
+            )
+            raise RouteTreeError(msg)
 
     def _validate_segment(
         self,
