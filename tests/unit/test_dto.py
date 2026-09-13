@@ -281,7 +281,7 @@ def test_validate_dto_type_rejects_body_without_type_parameter() -> None:
     """
 
     class _Bad(NamedTuple):
-        value: Body
+        value: Body  # type: ignore[type-arg]
 
     with pytest.raises(RouteTreeError, match="without a type parameter"):
         validate_dto_type(_Bad)
@@ -289,7 +289,7 @@ def test_validate_dto_type_rejects_body_without_type_parameter() -> None:
 
 def test_validate_dto_type_rejects_query_without_type_parameter() -> None:
     class _Bad(NamedTuple):
-        value: Query
+        value: Query  # type: ignore[type-arg]
 
     with pytest.raises(RouteTreeError, match="without a type parameter"):
         validate_dto_type(_Bad)
@@ -304,7 +304,7 @@ def test_validate_dto_type_rejects_nested_body_without_type_parameter() -> (
     """
 
     class _Inner(NamedTuple):
-        value: Body
+        value: Body  # type: ignore[type-arg]
 
     class _Outer(NamedTuple):
         details: Body[_Inner]
