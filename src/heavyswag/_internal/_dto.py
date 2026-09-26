@@ -229,6 +229,28 @@ def validate_output_dto_type(dto_type: type) -> None:
             validate_output_dto_type(field.target)
 
 
+def assemble_dto_validators(dto_type: type) -> None:
+    """Run each field's `assembly()` once, at route-registration time
+    (`CompressedRadixTree._insert`), so a self-inconsistent validator
+    — e.g. `StrField(min_len=5, max_len=2)` — fails at startup instead
+    of on the first matching request.
+
+    Duck-typed on `assembly` rather than importing concrete validator
+    types from `heavyswag.validation`: any metadata item exposing an
+    `assembly()` method is treated as a validator, so `StrField`,
+    `IntField`, and any future field type are picked up the same way
+    without this module needing to know about them.
+    """
+    for field in resolve_dto_fields(dto_type):
+        for item in field.metadata:
+            assembly = getattr(item, "assembly", None)
+            if callable(assembly):
+                assembly()
+
+        if is_namedtuple(field.target):
+            assemble_dto_validators(field.target)
+
+
 def dto_path_param_names(dto_type: type) -> frozenset[str]:
     """The DTO fields that resolve from a path segment — anything
     with neither a `Body` nor a `Query` marker. `CompressedRadixTree`

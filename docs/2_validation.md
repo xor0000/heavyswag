@@ -1,8 +1,8 @@
 ---
-icon: lucide/shield-check
+icon: lucide/arrow-left-right
 ---
 
-# Validation
+# Serialization
 
 A DTO field is resolved from one of three sources, based on its annotation:
 

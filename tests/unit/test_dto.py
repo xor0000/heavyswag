@@ -1,10 +1,11 @@
 import sys
 from dataclasses import dataclass
-from typing import NamedTuple
+from typing import Annotated, NamedTuple
 
 import pytest
 
 from heavyswag._internal._dto import (
+    assemble_dto_validators,
     dto_type,
     output_dto_type,
     resolve_dto_fields,
@@ -14,6 +15,19 @@ from heavyswag._internal._dto import (
 from heavyswag.errors import RouteTreeError
 from heavyswag.specify.request import Body, Query, Request
 from heavyswag.specify.response import Response
+
+
+class _CountingValidator:
+    """A minimal stand-in for `StrField`/`IntField`/... — duck-typed on
+    `assembly`, same as `assemble_dto_validators` itself, so these
+    tests don't depend on any concrete `heavyswag.validation` type.
+    """
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def assembly(self) -> None:
+        self.calls += 1
 
 
 class _Mixed(NamedTuple):
@@ -429,3 +443,35 @@ def test_output_dto_type_passthrough_for_scalar_response() -> None:
         return Response()
 
     assert output_dto_type(controller) is str
+
+
+def test_assemble_dto_validators_calls_assembly_on_metadata() -> None:
+    validator = _CountingValidator()
+
+    class _Dto(NamedTuple):
+        value: Annotated[Body[str], validator]
+
+    assemble_dto_validators(_Dto)
+
+    assert validator.calls == 1
+
+
+def test_assemble_dto_validators_ignores_metadata_without_assembly() -> None:
+    class _Dto(NamedTuple):
+        value: Body[str]
+
+    assemble_dto_validators(_Dto)
+
+
+def test_assemble_dto_validators_recurses_into_nested_body() -> None:
+    validator = _CountingValidator()
+
+    class _Inner(NamedTuple):
+        value: Annotated[Body[str], validator]
+
+    class _Outer(NamedTuple):
+        inner: Body[_Inner]
+
+    assemble_dto_validators(_Outer)
+
+    assert validator.calls == 1
