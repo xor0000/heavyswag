@@ -127,7 +127,9 @@ def test_assembly_accepts_no_consecutive_repeats_at_minimum() -> None:
 
 
 def test_assembly_rejects_char_list_with_non_bool_first_element() -> None:
-    with pytest.raises(ValidationError, match="char_list\\[0\\] must be a bool"):
+    with pytest.raises(
+        ValidationError, match="char_list\\[0\\] must be a bool"
+    ):
         StrField(char_list=("yes", "abc")).assembly()  # type: ignore[arg-type]
 
 
@@ -208,12 +210,16 @@ def test_validate_rejects_value_not_matching_pattern_preset(
 
 
 def test_validate_rejects_first_is_upper_with_lowercase_first_char() -> None:
-    with pytest.raises(ValidationError, match="First character must be uppercase"):
+    with pytest.raises(
+        ValidationError, match="First character must be uppercase"
+    ):
         StrField(first_is_upper=True).validate("david")
 
 
 def test_validate_rejects_first_is_upper_with_empty_value() -> None:
-    with pytest.raises(ValidationError, match="First character must be uppercase"):
+    with pytest.raises(
+        ValidationError, match="First character must be uppercase"
+    ):
         StrField(first_is_upper=True).validate("")
 
 
@@ -222,7 +228,9 @@ def test_validate_accepts_first_is_upper_with_uppercase_first_char() -> None:
 
 
 def test_validate_rejects_first_is_lover_with_uppercase_first_char() -> None:
-    with pytest.raises(ValidationError, match="First character must be lowercase"):
+    with pytest.raises(
+        ValidationError, match="First character must be lowercase"
+    ):
         StrField(first_is_lover=True).validate("David")
 
 

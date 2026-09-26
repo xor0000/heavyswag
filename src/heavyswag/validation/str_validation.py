@@ -11,7 +11,7 @@ _PATTERN_PRESETS: dict[str, str] = {
     "credit_card": r"^\d{13,19}$",
     "phone": r"^\+?\d{7,15}$",
     "slug": r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
-    "password": r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)\S{8,}$",
+    "password": r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)\S{8,}$",  # nosec B105 -- a strength-check regex, not a credential
 }
 
 _SPECIAL_SYMBOLS = frozenset(string.punctuation)
