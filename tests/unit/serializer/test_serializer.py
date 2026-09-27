@@ -1,17 +1,36 @@
 import json
 from datetime import datetime
-from typing import NamedTuple
+from typing import Annotated, NamedTuple
 from uuid import UUID, uuid4
 
 import pytest
 
 from heavyswag._internal._serializer import Serializer
 from heavyswag.constants import HttpMethod
-from heavyswag.errors import SerializationError
+from heavyswag.errors import SerializationError, ValidationError
 from heavyswag.specify.cookie import Cookie, SameSite
 from heavyswag.specify.request import Body, Preambule, Query, Request
 from heavyswag.specify.response import Response
 from tests.unit.factories.http import RequestFactory
+
+
+class _RecordingValidator:
+    """A minimal stand-in for `StrField`/`IntField`/... — duck-typed on
+    `validate`, same as `_validate_field_value` itself, so these tests
+    don't depend on any concrete `heavyswag.validation` type.
+    """
+
+    def __init__(self) -> None:
+        self.seen: list[object] = []
+
+    def validate(self, value: object) -> None:
+        self.seen.append(value)
+
+
+class _RaisingValidator:
+    def validate(self, value: object) -> None:  # noqa: ARG002
+        msg = "bad value"
+        raise ValidationError(msg)
 
 
 def test_parse_http_without_header_and_cookies_and_body() -> None:
@@ -863,3 +882,37 @@ def test_serialize_dto_supports_deeply_nested_namedtuple_body() -> None:
     assert dto == G(
         value=F(value=E(value=D(value=C(value=B(value=A(value="leaf"))))))
     )
+
+
+def test_serialize_dto_calls_validate_on_metadata() -> None:
+    validator = _RecordingValidator()
+
+    class _Dto(NamedTuple):
+        name: Annotated[Body[str], validator]
+
+    serializer = Serializer(b'{"name": "max"}')
+    serializer.serialize_dto(_Dto, {}, {})
+
+    assert validator.seen == ["max"]
+
+
+def test_serialize_dto_skips_validate_for_none_value() -> None:
+    validator = _RecordingValidator()
+
+    class _Dto(NamedTuple):
+        name: Annotated[Body[str], validator] | None
+
+    serializer = Serializer(b'{"name": null}')
+    serializer.serialize_dto(_Dto, {}, {})
+
+    assert validator.seen == []
+
+
+def test_serialize_dto_propagates_validation_error() -> None:
+    class _Dto(NamedTuple):
+        name: Annotated[Body[str], _RaisingValidator()]
+
+    serializer = Serializer(b'{"name": "max"}')
+
+    with pytest.raises(ValidationError, match="bad value"):
+        serializer.serialize_dto(_Dto, {}, {})

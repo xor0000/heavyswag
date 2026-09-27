@@ -1,7 +1,11 @@
 from collections.abc import Mapping
 from typing import Any
 
-from heavyswag.errors import HeavySwagError, SerializationError
+from heavyswag.errors import (
+    HeavySwagError,
+    SerializationError,
+    ValidationError,
+)
 from heavyswag.middlewares.base import CallNext, RequestContext
 from heavyswag.specify.response import Response
 
@@ -24,6 +28,7 @@ class ErrorHandler:
         self._map_errors: dict[type[Exception], tuple[int, str]] = {
             HeavySwagError: (500, "Internal Server Error"),
             SerializationError: (400, "Bad Request"),
+            ValidationError: (400, "Bad Request"),
             **(map_errors or {}),
         }
 

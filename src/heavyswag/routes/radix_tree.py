@@ -1,6 +1,7 @@
 from typing import Any, NamedTuple
 
 from heavyswag._internal._dto import (
+    assemble_dto_validators,
     dto_path_param_names,
     dto_type,
     is_namedtuple,
@@ -136,6 +137,7 @@ class CompressedRadixTree:
 
         input_dto = dto_type(route.controller)
         validate_dto_type(input_dto)
+        assemble_dto_validators(input_dto)
         self._validate_path_params(path, input_dto, path_param_names)
 
         output_type = output_dto_type(route.controller)

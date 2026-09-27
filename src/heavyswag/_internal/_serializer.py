@@ -3,7 +3,11 @@ from datetime import datetime
 from typing import Any, Final, get_args, get_origin
 from uuid import UUID
 
-from heavyswag._internal._dto import is_namedtuple, resolve_dto_fields
+from heavyswag._internal._dto import (
+    DTOField,
+    is_namedtuple,
+    resolve_dto_fields,
+)
 from heavyswag.constants import ALLOWED_TYPES, HttpMethod, MethodType
 from heavyswag.errors import SerializationError
 from heavyswag.specify.cookie import Cookie
@@ -201,7 +205,41 @@ class Serializer:
                 raw = self._field(path_params, field.name, dto_type)
                 values[field.name] = self._coerce(raw, field.target)
 
+        self._validate_dto_values(values, dto_type)
         return dto_type(**values)
+
+    def _validate_dto_values(
+        self,
+        values: dict[str, Any],
+        dto_type: type,
+    ) -> None:
+        """Run every field's `validate(value)` against the values
+        `serialize_dto` just coerced — the per-request counterpart to
+        `assemble_dto_validators`, which only checked the rules
+        themselves at startup. Duck-typed on `validate` the same way,
+        so `StrField`, `IntField`, and friends are all picked up
+        without this module importing any of them.
+        """
+        for field in resolve_dto_fields(dto_type):
+            self._validate_field_value(values[field.name], field)
+
+    def _validate_field_value(self, value: Any, field: DTOField) -> None:  # noqa: ANN401
+        if value is None:
+            return
+
+        if isinstance(value, list):
+            for item in value:
+                self._validate_field_value(item, field)
+            return
+
+        if is_namedtuple(field.target):
+            self._validate_dto_values(value._asdict(), field.target)
+            return
+
+        for item in field.metadata:
+            validate = getattr(item, "validate", None)
+            if callable(validate):
+                validate(value)
 
     def _coerce_query(
         self,
