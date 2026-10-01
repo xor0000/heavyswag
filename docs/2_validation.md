@@ -408,6 +408,17 @@ class UserOut(NamedTuple):
     genuinely the same, and you'd rather not maintain two identical
     `NamedTuple`s.
 
+!!! warning "The shortcut breaks once a field has a validator"
+    A [validator](6_validation.md) like `StrField` is only ever checked
+    for a request DTO: at startup for the DTO it's declared on, and
+    per-request while `Serializer` builds it.
+    Neither ever runs for a response, so reusing a request `NamedTuple` as
+    a nested response field is only valid as long as none of its fields
+    carry one — a `StrField` left on `zip_code` above would be rejected at
+    startup with `RouteTreeError: DTO 'Address' field 'zip_code' carries a
+    StrField validator, but a response is never validated — remove it.`,
+    the moment `Address` is used as (or nested inside) a response type.
+
 `Query[T]` is the one marker that's never allowed on a response type,
 nested or not — a response has no query string to resolve it from:
 

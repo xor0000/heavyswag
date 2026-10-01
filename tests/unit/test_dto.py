@@ -15,6 +15,7 @@ from heavyswag._internal._dto import (
 from heavyswag.errors import RouteTreeError
 from heavyswag.specify.request import Body, Query, Request
 from heavyswag.specify.response import Response
+from heavyswag.validation import StrField
 
 
 class _CountingValidator:
@@ -409,6 +410,27 @@ def test_validate_output_dto_type_rejects_query_marker_in_nested_namedtuple() ->
         validate_output_dto_type(_Out)
 
 
+def test_validate_output_dto_type_rejects_field_with_validator() -> None:
+    class _Out(NamedTuple):
+        name: Annotated[str, StrField(min_len=1)]
+
+    with pytest.raises(RouteTreeError, match="validator, but a response"):
+        validate_output_dto_type(_Out)
+
+
+def test_validate_output_dto_type_rejects_validator_in_nested_namedtuple() -> (
+    None
+):
+    class _Inner(NamedTuple):
+        value: Annotated[Body[str], StrField(min_len=1)]
+
+    class _Out(NamedTuple):
+        inner: _Inner
+
+    with pytest.raises(RouteTreeError, match="validator, but a response"):
+        validate_output_dto_type(_Out)
+
+
 def test_output_dto_type_extracts_bare_return_type() -> None:
     class _Empty(NamedTuple):
         pass
@@ -475,3 +497,40 @@ def test_assemble_dto_validators_recurses_into_nested_body() -> None:
     assemble_dto_validators(_Outer)
 
     assert validator.calls == 1
+
+
+def test_assemble_dto_validators_rejects_mismatched_validator_type() -> None:
+    class _Dto(NamedTuple):
+        value: Annotated[Body[int], StrField(min_len=1)]
+
+    with pytest.raises(RouteTreeError, match="does not match its type"):
+        assemble_dto_validators(_Dto)
+
+
+def test_assemble_dto_validators_accepts_matching_validator_type() -> None:
+    class _Dto(NamedTuple):
+        value: Annotated[Body[str], StrField(min_len=1)]
+
+    assemble_dto_validators(_Dto)
+
+
+def test_assemble_dto_validators_ignores_type_mismatch_on_path_param() -> None:
+    class _Dto(NamedTuple):
+        value: Annotated[int, StrField(min_len=1)]
+
+    assemble_dto_validators(_Dto)
+
+
+def test_assemble_dto_validators_unwraps_list_target_for_type_check() -> None:
+    class _Dto(NamedTuple):
+        tags: Annotated[Query[list[str]], StrField(min_len=1)]
+
+    assemble_dto_validators(_Dto)
+
+
+def test_assemble_dto_validators_rejects_mismatched_list_item_type() -> None:
+    class _Dto(NamedTuple):
+        tags: Annotated[Query[list[int]], StrField(min_len=1)]
+
+    with pytest.raises(RouteTreeError, match="does not match its type"):
+        assemble_dto_validators(_Dto)

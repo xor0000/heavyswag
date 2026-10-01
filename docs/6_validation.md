@@ -18,11 +18,11 @@ username: Annotated[
 ]
 ```
 
-A validator is a plain `NamedTuple` — `StrField` is the first one, more
-follow the same shape (`IntField`, `EmailField`, ...). Every validator
-exposes the same two methods, and nothing in the framework needs to know
-which concrete type it's dealing with — it just checks whether the object
-has the method:
+A validator is a plain `NamedTuple` — `StrField`, `NumField`, and
+`DateTimeField` today, more can follow the same shape later. Every
+validator exposes the same two methods, and nothing in the framework needs
+to know which concrete type it's dealing with — it just checks whether the
+object has the method:
 
 ```python
 class SomeField(NamedTuple):
@@ -58,12 +58,44 @@ username: Annotated[Body[str], StrField(min_len=10, max_len=3)]  # (1)!
 configuration itself: conflicting flags (`is_upper` and `is_lower` both
 `True`), an unparsable `pattern`, out-of-range bounds, and so on.
 
+### A validator has to match its field's type
+
+Alongside calling `assembly()`, route registration also checks that each
+validator is actually meant for the type of the field it's on — `StrField`
+only makes sense on `str`, `NumField` on `int`/`float`, `DateTimeField` on
+`datetime`:
+
+```python
+retries: Annotated[Body[int], StrField(min_len=1)]  # (1)!
+```
+
+1.  Rejected at startup with `RouteTreeError: DTO '...' field 'retries' has
+    a StrField validator, which does not match its type (<class 'int'>).`
+
+This only applies to `Body`/`Query` fields — a path parameter's shape is
+already pinned down by the route's own `{name}` segment, so it's left
+unchecked. For a `Body[list[T]]` or `Query[list[T]]` field, the check
+looks at `T`, not at `list` itself — a `StrField` on
+`Body[list[str]]`/`Query[list[str]]` is exactly as valid as one on
+`Body[str]`/`Query[str]`.
+
+!!! note "`NumField` doesn't distinguish `int` from `float`"
+    `NumField[T: float]` is generic for readability, but Python
+    discards the type argument the moment `NumField[int](...)` is called —
+    the resulting object is indistinguishable from `NumField[float](...)`.
+    So the type-match check (and `NumField` itself) only confirms the
+    field is *numeric* — `NumField` is equally accepted on `Body[int]` and
+    `Body[float]`, with no way to require one specifically over the other.
+
 ### Runtime
 
 `Serializer.serialize_dto` calls `validate(value)` on every field's
 validator(s), right after coercing that field's value — recursively, so a
-validator on a nested `Body[NamedTuple]` field or on each item of a
-`Query[list[T]]` field runs the same way:
+validator on a nested `Body[NamedTuple]` field, or on each item of a
+`Body[list[T]]`/`Query[list[T]]` field, runs the same way. The list case
+follows straight from the type-match rule above: since the validator is
+matched against `T`, it's `T`'s rules that get checked, once per item —
+not once for the list as a whole.
 
 ```python
 username: Annotated[Body[str], StrField(min_len=3)]
@@ -208,3 +240,70 @@ StrField(char_list=(False, "!@#$>ls"))  # these characters are forbidden
 ```
 
 The character set must not be empty — checked at assembly.
+
+## `NumField`
+
+```python
+from heavyswag.validation import NumField
+```
+
+`NumField[T: float]` covers bounds and parity for a single numeric
+value — type checkers accept `int` wherever `float` is expected, so both
+`NumField[int]` and `NumField[float]` are valid. As with `StrField`, every
+field defaults to `None`.
+
+| Field | Meaning |
+| --- | --- |
+| `min: T` | minimum value, inclusive |
+| `max: T` | maximum value, inclusive |
+| `is_even: bool` | value must be even |
+| `is_odd: bool` | value must be odd |
+
+```python
+retries: Annotated[Body[int], NumField[int](min=0, max=5)]
+price: Annotated[Body[float], NumField[float](min=0.0)]
+```
+
+`max` must be greater than or equal to `min`, and `is_even`/`is_odd` can't
+both be `True` — both checked at assembly. Parity is checked with `% 2`,
+which is exact for `int` but only meaningful for whole-number `float`
+values — `is_even`/`is_odd` on a field that can hold fractional floats
+will reject every fractional value, since none of them are exactly even
+or odd.
+
+As covered [above](#a-validator-has-to-match-its-fields-type), the `[T]`
+in `NumField[T]` is for readability only — it isn't enforced, and
+`NumField` is accepted on both `Body[int]` and `Body[float]` regardless
+of which one you write.
+
+## `DateTimeField`
+
+```python
+from heavyswag.validation import DateTimeField
+```
+
+`DateTimeField` covers bounds and relative-time rules for a single
+`datetime` value.
+
+| Field | Meaning |
+| --- | --- |
+| `min: datetime` | earliest allowed value, inclusive |
+| `max: datetime` | latest allowed value, inclusive |
+| `require_tz: bool` | value must be timezone-aware (`tzinfo` set) |
+| `is_past: bool` | value must be earlier than now |
+| `is_future: bool` | value must be later than now |
+
+```python
+scheduled_for: Annotated[Body[datetime], DateTimeField(is_future=True)]
+```
+
+`max` must be greater than or equal to `min`, and `is_past`/`is_future`
+can't both be `True` — both checked at assembly.
+
+"Now" is computed with `datetime.now(value.tzinfo)` — an aware value is
+compared against an aware "now" in the same timezone, and a naive value
+against a naive local "now", so `is_past`/`is_future` never raises from
+mixing aware and naive datetimes on its own. Comparing an aware `min`/`max`
+against a naive value (or vice versa) still raises `TypeError`, same as
+comparing them directly in plain Python — pick one and stay consistent
+for a given field.
