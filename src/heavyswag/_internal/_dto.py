@@ -15,8 +15,21 @@ from uuid import UUID
 from heavyswag.errors import RouteTreeError
 from heavyswag.specify.request import BodyMarker, QueryMarker
 from heavyswag.specify.response import Response
+from heavyswag.validation import DateTimeField, NumField, StrField
 
 _NoneType = type(None)
+
+# Which field type(s) each validator makes sense on — checked once,
+# at route-registration time, so a `StrField` left on a `Body[int]`
+# field after a refactor fails at startup instead of just quietly
+# never triggering. Not duck-typed: unlike `assembly`/`validate`,
+# this has to know the concrete validator types to know what they're
+# for, so it lives here instead of in `heavyswag.validation`.
+_VALIDATOR_COMPATIBLE_TYPES: dict[type, tuple[type, ...]] = {
+    StrField: (str,),
+    NumField: (int, float),
+    DateTimeField: (datetime,),
+}
 
 # Before 3.14, `str | None` and `Optional[str]` are two distinct
 # objects: `get_origin` reports `types.UnionType` for the first and
@@ -199,7 +212,8 @@ def validate_dto_type(dto_type: type) -> None:
 
 
 def validate_output_dto_type(dto_type: type) -> None:
-    """Reject a response DTO that carries a `Query` marker.
+    """Reject a response DTO that carries a `Query` marker, or a
+    validator on any of its fields.
 
     A response DTO is always serialized whole into the body, so a
     bare field and a `Body[...]` field are equally fine — both just
@@ -212,6 +226,16 @@ def validate_output_dto_type(dto_type: type) -> None:
     query string to resolve it from on the way out. Checked all the
     way down: a field that's itself a `NamedTuple` is part of the
     same body.
+
+    A validator is rejected for a different reason: nothing ever
+    calls `assembly()`/`validate()` for an output DTO — only
+    `CompressedRadixTree._insert` (for the *input* DTO, via
+    `assemble_dto_validators`) and `Serializer.serialize_dto` do that,
+    and neither ever runs against a controller's return value. A
+    `StrField` left on a response field by copy-paste from the request
+    DTO would silently do nothing, which is worse than not having it
+    at all — so it's caught here instead. Duck-typed on `validate`,
+    same as everywhere else a validator is discovered.
     """
     for field in resolve_dto_fields(dto_type):
         is_query = any(
@@ -225,30 +249,77 @@ def validate_output_dto_type(dto_type: type) -> None:
             )
             raise RouteTreeError(msg)
 
+        for item in field.metadata:
+            if callable(getattr(item, "validate", None)):
+                msg = (
+                    f"DTO '{dto_type.__name__}' field '{field.name}' "
+                    f"carries a {type(item).__name__} validator, but a "
+                    "response is never validated — remove it."
+                )
+                raise RouteTreeError(msg)
+
         if is_namedtuple(field.target):
             validate_output_dto_type(field.target)
 
 
-def assemble_dto_validators(dto_type: type) -> None:
+def assemble_dto_validators(dto_type: type, *, _in_body: bool = False) -> None:
     """Run each field's `assembly()` once, at route-registration time
     (`CompressedRadixTree._insert`), so a self-inconsistent validator
     — e.g. `StrField(min_len=5, max_len=2)` — fails at startup instead
-    of on the first matching request.
+    of on the first matching request. Also checks, for `Body`/`Query`
+    fields only, that an attached validator is actually meant for the
+    field's own type (see `_VALIDATOR_COMPATIBLE_TYPES`) — a `StrField`
+    left on a `Body[int]` field after a refactor is a mistake worth
+    catching at startup, not something that should just silently never
+    trigger. Path parameters are left unchecked: their shape is already
+    pinned down by the route's own `{name}` segments.
 
-    Duck-typed on `assembly` rather than importing concrete validator
-    types from `heavyswag.validation`: any metadata item exposing an
-    `assembly()` method is treated as a validator, so `StrField`,
-    `IntField`, and any future field type are picked up the same way
-    without this module needing to know about them.
+    The `assembly()` call itself is duck-typed — any metadata item
+    exposing that method is treated as a validator, so `StrField`,
+    `NumField`, and any future field type are picked up the same way
+    without this module needing to know about them. The type-match
+    check below is the exception: it has to know the concrete
+    validator types (see `_VALIDATOR_COMPATIBLE_TYPES`).
+
+    `_in_body` marks a recursive call made for a nested
+    `Body[NamedTuple]` field — every field down there is body-equivalent
+    even without its own marker (see `_has_no_query_fields`), so the
+    type check always applies once inside one.
     """
     for field in resolve_dto_fields(dto_type):
+        is_body = _in_body or any(
+            isinstance(item, BodyMarker) for item in field.metadata
+        )
+        is_query = any(
+            isinstance(item, QueryMarker) for item in field.metadata
+        )
+
+        if is_body or is_query:
+            _validate_validator_types(dto_type, field)
+
         for item in field.metadata:
             assembly = getattr(item, "assembly", None)
             if callable(assembly):
                 assembly()
 
         if is_namedtuple(field.target):
-            assemble_dto_validators(field.target)
+            assemble_dto_validators(field.target, _in_body=True)
+
+
+def _validate_validator_types(dto_type: type, field: DTOField) -> None:
+    target = field.target
+    if get_origin(target) is list:
+        (target,) = get_args(target)
+
+    for item in field.metadata:
+        compatible_types = _VALIDATOR_COMPATIBLE_TYPES.get(type(item))
+        if compatible_types is not None and target not in compatible_types:
+            msg = (
+                f"DTO '{dto_type.__name__}' field '{field.name}' has a "
+                f"{type(item).__name__} validator, which does not match "
+                f"its type ({target!r})."
+            )
+            raise RouteTreeError(msg)
 
 
 def dto_path_param_names(dto_type: type) -> frozenset[str]:
