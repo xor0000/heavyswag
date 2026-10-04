@@ -119,6 +119,72 @@ There's no convention for an "explicit null" in a query string (`?q=null` is
 just the four-character string `"null"`, not a null value) — don't invent
 one on the client.
 
+## Unknown body keys
+
+A JSON body may only carry keys that some `Body[...]` field of the DTO
+resolves from. An extra one is a `400 Bad Request`:
+
+```python
+class CreateUser(NamedTuple):
+    username: Body[str]
+```
+
+```json
+{"username": "Max", "role": "admin"}
+```
+
+```
+400 Bad Request — SerializationError: Unknown body field(s) 'role' for
+CreateUser.
+```
+
+Dropping that key silently would leave the client believing it had set a
+role, while the value never reached the controller at all — the same failure
+mode as a typo'd key, except a misspelled *required* key at least surfaces
+as the matching `Missing field` error. Every unknown key is reported at
+once, sorted, so one round trip is enough to fix a body with several of
+them: `Unknown body field(s) 'age', 'role' for CreateUser.`
+
+Being strict here costs nothing, because [every `Body` field has to be
+present anyway](#bodyt-none) — an `Optional` one included, where the key
+must hold an explicit `null`. A key matching no field could therefore never
+have been honored under any DTO shape.
+
+The rule follows nesting, each object checked against the fields of the
+`NamedTuple` it resolves into (see [Nested bodies](#nested-bodies)):
+
+```python
+class Address(NamedTuple):
+    city: str
+
+
+class CreateUser(NamedTuple):
+    username: Body[str]
+    address: Body[Address]
+```
+
+```json
+{"username": "Max", "address": {"city": "Berlin", "zip_code": "10115"}}
+```
+
+```
+400 Bad Request — SerializationError: Unknown body field(s) 'zip_code' for
+Address.
+```
+
+!!! note "Extra *query* parameters are fine"
+    This applies to the JSON body only. A query string routinely carries
+    values meant for something other than your DTO — tracking tags, cache
+    busters, a client-side router's own state — so an unrecognized query
+    key is ignored, not an error:
+
+    ```
+    GET /search?q=cats&utm_source=mail   -> dto == Search(q="cats")
+    ```
+
+    A body has no such tradition of unrelated passengers: everything in it
+    was put there deliberately, for this endpoint.
+
 ## Query values
 
 A query string is flat text after `?`, split into `name=value` pairs — it has
@@ -248,7 +314,9 @@ async def create_user(request: Request, dto: CreateUser) -> str: ...
 it resolves a top-level `Body` field — recursively, so nesting can go as
 deep as you want. If the value at that key isn't a JSON object at all (a
 string, a number, `[1, 2]`, ...), that's a `400 Bad Request` at request
-time, not something the checks below could have caught up front.
+time, not something the checks below could have caught up front. The same
+goes for a key the nested `NamedTuple` has no field for — see
+[Unknown body keys](#unknown-body-keys).
 
 `Body[T]` also works on `Address`'s own fields — it's accepted, just
 redundant there:

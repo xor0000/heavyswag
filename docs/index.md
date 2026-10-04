@@ -116,8 +116,10 @@ async def get_user(request: Request, dto: UserIdDTO) -> str: ...
 # -> GET /users/{user_id}
 ```
 
-A router prefix must start with `/` and contain only ASCII letters (no
-digits, dashes or extra `/` — one path segment per router).
+A router prefix must start with `/`, must not end with one, and may span
+several segments (`/api/v1`) built from ASCII letters, digits and `-`, `_`,
+`.`, `~`. A `{name}` segment is the one thing it may not contain — path
+parameters belong on the route path.
 
 ## Request data
 

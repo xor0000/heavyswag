@@ -392,6 +392,53 @@ def test_serialize_dto_optional_body_present_value_is_coerced() -> None:
     assert dto == _OptionalBody(name="max")
 
 
+def test_serialize_dto_unknown_body_key_raises() -> None:
+    serializer = Serializer(b'{"name": "max", "role": "admin"}')
+
+    with pytest.raises(
+        SerializationError, match="Unknown body field\\(s\\) 'role'"
+    ):
+        serializer.serialize_dto(_BodyOnly, {}, {})
+
+
+def test_serialize_dto_unknown_body_keys_are_all_reported() -> None:
+    serializer = Serializer(b'{"name": "max", "role": "admin", "age": 1}')
+
+    with pytest.raises(
+        SerializationError, match="Unknown body field\\(s\\) 'age', 'role'"
+    ):
+        serializer.serialize_dto(_BodyOnly, {}, {})
+
+
+def test_serialize_dto_unknown_nested_body_key_raises() -> None:
+    class _Inner(NamedTuple):
+        name: Body[str]
+
+    class _Outer(NamedTuple):
+        inner: Body[_Inner]
+
+    serializer = Serializer(b'{"inner": {"name": "max", "role": "admin"}}')
+
+    with pytest.raises(
+        SerializationError, match="Unknown body field\\(s\\) 'role'"
+    ):
+        serializer.serialize_dto(_Outer, {}, {})
+
+
+def test_serialize_dto_unknown_query_key_is_ignored() -> None:
+    """Unlike a body key, an extra query parameter is not an error —
+    query strings routinely carry values meant for something other
+    than the DTO.
+    """
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(
+        _QueryOnly, {}, {"flag": ["true"], "utm_source": ["mail"]}
+    )
+
+    assert dto == _QueryOnly(flag=True)
+
+
 def test_serialize_dto_optional_query_missing_key_is_none() -> None:
     serializer = Serializer(b"")
 

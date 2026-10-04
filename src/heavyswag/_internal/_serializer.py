@@ -174,8 +174,15 @@ class Serializer:
         each item coerced to `X`. A non-list `Query[X]` field is a bad
         request if the key repeats — there's no sane single value to
         pick.
+
+        A body key matching no `Body[...]` field is a bad request too
+        (see `_reject_unknown_keys`). Extra query keys, by contrast,
+        are ignored: a query string routinely carries unrelated
+        parameters (tracking tags, cache busters) that were never
+        meant for the DTO.
         """
         body: dict[str, Any] | None = None
+        body_names: set[str] = set()
         values: dict[str, Any] = {}
 
         for field in resolve_dto_fields(dto_type):
@@ -189,6 +196,7 @@ class Serializer:
             if is_body:
                 if body is None:
                     body = self.serialize_json()
+                body_names.add(field.name)
                 raw = self._field(body, field.name, dto_type)
                 values[field.name] = (
                     raw if raw is None else self._coerce(raw, field.target)
@@ -205,8 +213,35 @@ class Serializer:
                 raw = self._field(path_params, field.name, dto_type)
                 values[field.name] = self._coerce(raw, field.target)
 
+        if body is not None:
+            self._reject_unknown_keys(body, body_names, dto_type)
+
         self._validate_dto_values(values, dto_type)
         return dto_type(**values)
+
+    def _reject_unknown_keys(
+        self,
+        body: dict[str, Any],
+        known: set[str],
+        dto_type: type,
+    ) -> None:
+        """Reject a JSON body carrying keys no field of `dto_type`
+        resolves from.
+
+        Dropping them silently makes a client that sent
+        `{"username": "max", "role": "admin"}` look like it set a role,
+        when the value never reached the controller — the same failure
+        mode as a misspelled key, except a misspelled *required* key at
+        least surfaces as the matching `Missing field` error. Nothing is
+        lost by being strict here: every `Body` field has to be present
+        anyway (an `Optional` one included — see above), so a key that
+        matches no field could never have been honored.
+        """
+        unknown = sorted(set(body) - known)
+        if unknown:
+            names = ", ".join(repr(name) for name in unknown)
+            msg = f"Unknown body field(s) {names} for {dto_type.__name__}."
+            raise SerializationError(msg)
 
     def _validate_dto_values(
         self,
@@ -420,15 +455,21 @@ class Serializer:
         field of `dto_type` is itself `Body[...]`, all the way down,
         so each one is resolved the same way a top-level `Body` field
         is: looked up by key, with an explicit JSON `null` passing
-        through as `None`.
+        through as `None`, and an unknown key in the nested object
+        rejected just as it is at the top level.
         """
         values: dict[str, Any] = {}
+        fields = resolve_dto_fields(dto_type)
 
-        for field in resolve_dto_fields(dto_type):
+        for field in fields:
             raw = self._field(value, field.name, dto_type)
             values[field.name] = (
                 raw if raw is None else self._coerce(raw, field.target)
             )
+
+        self._reject_unknown_keys(
+            value, {field.name for field in fields}, dto_type
+        )
 
         return dto_type(**values)
 
