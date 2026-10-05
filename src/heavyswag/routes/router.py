@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Concatenate, NamedTuple, Self
 
 from heavyswag.constants import ALLOWED_TYPES, HttpMethod
+from heavyswag.doc.models import DocController, DocRouter
 from heavyswag.errors import IncludedRouterError
 from heavyswag.specify.request import Request
 from heavyswag.specify.response import Response
@@ -31,6 +32,10 @@ class Route[
     method: HttpMethod
     path: str
     controller: Controller[InDTO, OutDTO, P]  # type: ignore[type-var]
+    # What a bare-DTO return is sent with — an explicit `Response`
+    # keeps its own status (see `Serializer.wrap_response`).
+    status_code: int = 200
+    doc: DocController | None = None
 
     def __eq__(self, other: Self) -> bool:  # type: ignore[override]
         return self.path == other.path and self.method == other.method
@@ -40,10 +45,11 @@ class Route[
 
 
 class HeavyRouter:
-    __slots__ = ("added_routers", "prefix", "routes")
+    __slots__ = ("added_routers", "doc", "prefix", "routes")
 
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, doc: DocRouter | None = None) -> None:
         self.prefix = path
+        self.doc = doc
         self.routes: set[Route[Any, Any, Any]] = set()
         self.added_routers: set[Self] = set()
 
@@ -54,11 +60,13 @@ class HeavyRouter:
     ](
         self,
         path: str,
+        status_code: int = 200,
+        doc: DocController | None = None,
     ) -> Callable[  # type: ignore[type-var]
         [Controller[In, Out, P]],
         Controller[In, Out, P],
     ]:
-        return self._add_route(path, HttpMethod.GET)
+        return self._add_route(path, HttpMethod.GET, status_code, doc)
 
     def post[
         In: tuple[ALLOWED_TYPES, ...] | None,
@@ -67,11 +75,13 @@ class HeavyRouter:
     ](
         self,
         path: str,
+        status_code: int = 200,
+        doc: DocController | None = None,
     ) -> Callable[  # type: ignore[type-var]
         [Controller[In, Out, P]],
         Controller[In, Out, P],
     ]:
-        return self._add_route(path, HttpMethod.POST)
+        return self._add_route(path, HttpMethod.POST, status_code, doc)
 
     def put[
         In: tuple[ALLOWED_TYPES, ...] | None,
@@ -80,11 +90,13 @@ class HeavyRouter:
     ](
         self,
         path: str,
+        status_code: int = 200,
+        doc: DocController | None = None,
     ) -> Callable[  # type: ignore[type-var]
         [Controller[In, Out, P]],
         Controller[In, Out, P],
     ]:
-        return self._add_route(path, HttpMethod.PUT)
+        return self._add_route(path, HttpMethod.PUT, status_code, doc)
 
     def patch[
         In: tuple[ALLOWED_TYPES, ...] | None,
@@ -93,11 +105,13 @@ class HeavyRouter:
     ](
         self,
         path: str,
+        status_code: int = 200,
+        doc: DocController | None = None,
     ) -> Callable[  # type: ignore[type-var]
         [Controller[In, Out, P]],
         Controller[In, Out, P],
     ]:
-        return self._add_route(path, HttpMethod.PATCH)
+        return self._add_route(path, HttpMethod.PATCH, status_code, doc)
 
     def delete[
         In: tuple[ALLOWED_TYPES, ...] | None,
@@ -106,11 +120,13 @@ class HeavyRouter:
     ](
         self,
         path: str,
+        status_code: int = 200,
+        doc: DocController | None = None,
     ) -> Callable[  # type: ignore[type-var]
         [Controller[In, Out, P]],
         Controller[In, Out, P],
     ]:
-        return self._add_route(path, HttpMethod.DELETE)
+        return self._add_route(path, HttpMethod.DELETE, status_code, doc)
 
     def include_router(self, router: Self) -> None:
         prefix = router.prefix
@@ -180,6 +196,8 @@ class HeavyRouter:
         self,
         path: str,
         method: HttpMethod,
+        status_code: int,
+        doc: DocController | None,
     ) -> Callable[  # type: ignore[type-var]
         [Controller[In, Out, P]],
         Controller[In, Out, P],
@@ -192,6 +210,8 @@ class HeavyRouter:
                     path=path,
                     method=method,
                     controller=controller,
+                    status_code=status_code,
+                    doc=doc,
                 )
             )
             return controller

@@ -383,3 +383,25 @@ async def test_unknown_scope_type_does_nothing() -> None:
     await server({"type": "websocket"}, receive, send)
 
     assert send.messages == []
+
+
+@pytest.mark.asyncio
+async def test_http_bare_return_uses_route_status_code() -> None:
+    router = HeavyRouter("/")
+
+    @router.post("/", status_code=201)
+    async def create(_: Request, __: _Empty) -> str:
+        return "created"
+
+    server = run_app(HeavySwag(main_router=router))
+    send = SendRecorder()
+
+    await server(
+        http_scope(method="POST", path="/"),
+        ReceiveQueue([{"type": "http.request", "body": b"", "more_body": False}]),
+        send,
+    )
+
+    start = send.messages[0]
+    assert start["status"] == 201  # noqa: PLR2004
+    assert (b"content-type", b"text/plain; charset=utf-8") in start["headers"]

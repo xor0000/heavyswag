@@ -1,5 +1,6 @@
 import pytest
 
+from heavyswag.doc import DocController, DocRouter, DocTag
 from heavyswag.errors import IncludedRouterError
 from heavyswag.routes.router import HeavyRouter
 from heavyswag.specify.request import Request
@@ -112,3 +113,30 @@ def test_include_root_router_into_a_sub_router() -> None:
 
     with pytest.raises(IncludedRouterError, match="main router"):
         users_router.include_router(HeavyRouter("/"))
+
+
+def test_route_defaults_to_status_200_without_doc() -> None:
+    router = HeavyRouter("/")
+
+    @router.get("/")
+    async def controller(_: Request, __: tuple[()]) -> None:
+        return None
+
+    (route,) = router.routes
+    assert route.status_code == 200  # noqa: PLR2004
+    assert route.doc is None
+
+
+@pytest.mark.parametrize("method", ["get", "post", "put", "patch", "delete"])
+def test_route_keeps_status_code_and_doc(method: str) -> None:
+    router = HeavyRouter("/", doc=DocRouter(tags=[DocTag("Users")]))
+    doc = DocController(summary="Create")
+
+    @getattr(router, method)("/", status_code=201, doc=doc)
+    async def controller(_: Request, __: tuple[()]) -> None:
+        return None
+
+    (route,) = router.routes
+    assert route.status_code == 201  # noqa: PLR2004
+    assert route.doc is doc
+    assert router.doc == DocRouter(tags=[DocTag("Users")])

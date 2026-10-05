@@ -36,6 +36,51 @@ class MatchedRoute(NamedTuple):
     params: dict[str, str]
 
 
+class RouteEntry(NamedTuple):
+    path: str
+    route: AnyRoute
+    # Every router from the main one down to the route's own — what
+    # `heavyswag.doc` inherits tags and security from.
+    routers: tuple[HeavyRouter, ...]
+
+
+def collect_routes(main_router: HeavyRouter) -> list[RouteEntry]:
+    """Every route reachable from `main_router`, with its full path
+    (all router prefixes joined in)."""
+    return _collect(main_router, "/", ())
+
+
+def _collect(
+    router: HeavyRouter,
+    base: str,
+    chain: tuple[HeavyRouter, ...],
+) -> list[RouteEntry]:
+    if any(seen is router for seen in chain):
+        msg = f"Circular router inclusion detected at '{router.prefix}'."
+        raise RouteTreeError(msg)
+
+    chain = (*chain, router)
+
+    collected = [
+        RouteEntry(_join(base, route.path), route, chain)
+        for route in router.routes
+    ]
+
+    for sub_router in router.added_routers:
+        sub_base = _join(base, sub_router.prefix)
+        collected.extend(_collect(sub_router, sub_base, chain))
+
+    return collected
+
+
+def _join(base: str, segment: str) -> str:
+    if segment == "/":
+        return base
+
+    trimmed = "" if base == "/" else base.rstrip("/")
+    return f"{trimmed}{segment}"
+
+
 class CompressedRadixTree:
     """A char-compressed radix tree for HTTP route lookup"""
 
@@ -51,8 +96,8 @@ class CompressedRadixTree:
 
         self._root = Node("")
 
-        for path, route in self._collect(main_router, "/", frozenset()):
-            self._insert(path, route)
+        for entry in collect_routes(main_router):
+            self._insert(entry.path, entry.route)
 
     def search(self, method: HttpMethod, path: str) -> MatchedRoute | None:
         params: list[tuple[str, str]] = []
@@ -102,35 +147,6 @@ class CompressedRadixTree:
                 params.pop()
 
         return None
-
-    def _collect(
-        self,
-        router: HeavyRouter,
-        base: str,
-        seen: frozenset[int],
-    ) -> list[tuple[str, AnyRoute]]:
-        if id(router) in seen:
-            msg = f"Circular router inclusion detected at '{router.prefix}'."
-            raise RouteTreeError(msg)
-
-        seen = seen | {id(router)}
-
-        collected = [
-            (self._join(base, route.path), route) for route in router.routes
-        ]
-
-        for sub_router in router.added_routers:
-            sub_base = self._join(base, sub_router.prefix)
-            collected.extend(self._collect(sub_router, sub_base, seen))
-
-        return collected
-
-    def _join(self, base: str, segment: str) -> str:
-        if segment == "/":
-            return base
-
-        trimmed = "" if base == "/" else base.rstrip("/")
-        return f"{trimmed}{segment}"
 
     def _insert(self, path: str, route: AnyRoute) -> None:
         path_param_names = self._validate(path)

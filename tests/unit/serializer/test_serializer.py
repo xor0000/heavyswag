@@ -1,11 +1,12 @@
 import json
 from datetime import datetime
+from enum import IntEnum, StrEnum
 from typing import Annotated, NamedTuple
 from uuid import UUID, uuid4
 
 import pytest
 
-from heavyswag._internal._serializer import Serializer
+from heavyswag._internal._serializer import Serializer, to_jsonable
 from heavyswag.constants import HttpMethod
 from heavyswag.errors import SerializationError, ValidationError
 from heavyswag.specify.cookie import Cookie, SameSite
@@ -963,3 +964,117 @@ def test_serialize_dto_propagates_validation_error() -> None:
 
     with pytest.raises(ValidationError, match="bad value"):
         serializer.serialize_dto(_Dto, {}, {})
+
+
+class _Color(StrEnum):
+    RED = "red"
+    BLUE = "blue"
+
+
+class _Level(IntEnum):
+    LOW = 1
+    HIGH = 2
+
+
+class _EnumFields(NamedTuple):
+    color: _Color
+    level: Query[_Level]
+    colors: Query[list[_Color]]
+    body_color: Body[_Color]
+    body_level: Body[_Level]
+
+
+def test_serialize_dto_coerces_enums_from_every_location() -> None:
+    serializer = Serializer(
+        RequestFactory.build(
+            method="POST", body={"body_color": "blue", "body_level": 2}
+        )
+    )
+    serializer.serialize_preambule()
+    serializer.serialize_request()
+
+    dto = serializer.serialize_dto(
+        _EnumFields,
+        {"color": "red"},
+        {"level": ["1"], "colors": ["red", "blue"]},
+    )
+
+    assert dto == _EnumFields(
+        color=_Color.RED,
+        level=_Level.LOW,
+        colors=[_Color.RED, _Color.BLUE],
+        body_color=_Color.BLUE,
+        body_level=_Level.HIGH,
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "target"),
+    [
+        ("green", _Color),
+        (1, _Color),
+        ("3", _Level),
+        ("high", _Level),
+        (True, _Level),
+    ],
+)
+def test_coerce_enum_rejects_unknown_value(value: object, target: type) -> None:
+    serializer = Serializer(b"")
+
+    with pytest.raises(SerializationError, match="expected one of"):
+        serializer._coerce(value, target)  # noqa: SLF001
+
+
+def test_wrap_response_uses_route_status_for_bare_value() -> None:
+    wrapped = Serializer(b"").wrap_response("hello", 201)
+
+    assert wrapped.status_code == 201  # noqa: PLR2004
+
+
+def test_wrap_response_keeps_explicit_response_status() -> None:
+    response: Response[str] = Response(status_code=202)
+
+    assert Serializer(b"").wrap_response(response, 201).status_code == 202  # noqa: PLR2004
+
+
+@pytest.mark.parametrize(
+    ("body", "content_type"),
+    [
+        ("ok", b"text/plain; charset=utf-8"),
+        (b"raw", b"application/octet-stream"),
+        ({"a": 1}, b"application/json"),
+        ([1, 2], b"application/json"),
+    ],
+)
+def test_render_sets_content_type_from_body(
+    body: object, content_type: bytes
+) -> None:
+    response: Response[object] = Response()  # type: ignore[type-var]
+    response.set_body(body)
+
+    headers, _ = Serializer(b"").render(response)
+
+    assert (b"content-type", content_type) in headers
+
+
+def test_render_keeps_explicit_content_type() -> None:
+    response: Response[str] = Response()
+    response.set_body("<p>hi</p>")
+    response.attach_header("Content-Type", "text/html")
+
+    headers, _ = Serializer(b"").render(response)
+
+    content_types = [v for k, v in headers if k.lower() == b"content-type"]
+    assert content_types == [b"text/html"]
+
+
+def test_render_no_content_type_for_empty_body() -> None:
+    headers, _ = Serializer(b"").render(Response())
+
+    assert not any(name == b"content-type" for name, _ in headers)
+
+
+def test_to_jsonable_enum() -> None:
+    assert to_jsonable(_Color.RED) == "red"
+    assert to_jsonable(_Level.HIGH) == 2  # noqa: PLR2004
+    assert to_jsonable([_Color.BLUE]) == ["blue"]

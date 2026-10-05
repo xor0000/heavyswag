@@ -14,6 +14,7 @@ from typing import (
 from heavyswag._internal._dto import dto_type as _dto_type
 from heavyswag._internal._serializer import Serializer
 from heavyswag.constants import HttpMethod
+from heavyswag.doc.models import DocApp
 from heavyswag.middlewares.base import (
     Middleware,
     RequestContext,
@@ -48,6 +49,7 @@ async def _noop_lifespan(app: "HeavySwag") -> AsyncIterator[None]:  # noqa: ARG0
 class HeavySwag:
     __slots__ = (
         "dependency_resolver",
+        "doc",
         "err_handler",
         "lifespan",
         "main_router",
@@ -60,11 +62,13 @@ class HeavySwag:
         err_handler: ErrorHandler | None = None,
         middlewares: Sequence[Middleware] = (),
         lifespan: Lifespan | None = None,
+        doc: DocApp | None = None,
     ) -> None:
         self.main_router = main_router
         self.err_handler = err_handler or ErrorHandler()
         self.middlewares = middlewares
         self.lifespan: Lifespan = lifespan or _noop_lifespan
+        self.doc = doc
 
 
 class _HS_Server:  # noqa: N801
@@ -215,7 +219,9 @@ class _HS_Server:  # noqa: N801
 
         result = await controller(context.request, dto)
 
-        return context.serializer.wrap_response(result)
+        return context.serializer.wrap_response(
+            result, matched.route.status_code
+        )
 
     async def _send_response(
         self,
