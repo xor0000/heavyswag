@@ -111,8 +111,13 @@ class _OpenAPIBuilder:
         paths: dict[str, dict[str, Any]] = {}
         operations: list[tuple[dict[str, Any], RouteEntry]] = []
 
+        visible = [
+            entry
+            for entry in entries
+            if entry.route.doc is None or not entry.route.doc.hidden
+        ]
         for entry in sorted(
-            entries, key=lambda item: (item.path, item.route.method)
+            visible, key=lambda item: (item.path, item.route.method)
         ):
             operation = self._operation(entry)
             method = entry.route.method.name.lower()

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{title}}</title>
+<link id="favicon" rel="icon" href="data:,">
+<style>
+{{styles}}
+</style>
+</head>
+<body>
+
+<!-- ============ TOPBAR ============ -->
+<header class="topbar">
+  <div class="brand" id="brand" title="Обзор API">
+    <div class="brand-logo" id="brandLogo"></div>
+    <div>
+      <div class="brand-name" id="brandName"></div>
+      <div class="brand-tag">API Reference</div>
+    </div>
+  </div>
+
+  <div class="topbar-search">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+    <input type="text" id="searchInput" placeholder="Поиск по эндпоинтам, тегам, схемам…" autocomplete="off">
+    <kbd>/</kbd>
+  </div>
+
+  <div class="topbar-right">
+    <select class="select hidden" id="versionSelect" title="Версия API"></select>
+    <button class="pill-btn hidden" id="diffBtn" title="Сравнить версии">⇄ Diff</button>
+    <button class="pill-btn auth-btn hidden" id="authBtn" title="Авторизация по securitySchemes"></button>
+    <button class="icon-btn" id="globalSettingsBtn" title="Глобальные заголовки / куки"></button>
+    <button class="icon-btn" id="themeToggleBtn" title="Светлая / тёмная тема"></button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main" id="mainContent"></main>
+</div>
+
+<!-- ============ GLOBAL HEADERS / COOKIES DRAWER ============ -->
+<div class="drawer-backdrop" id="drawerBackdrop"></div>
+<aside class="drawer" id="drawer" aria-label="Глобальные заголовки и куки">
+  <div class="drawer-head">
+    <h3>Глобальные заголовки и куки</h3>
+    <button class="icon-btn" id="drawerCloseBtn" title="Закрыть"></button>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-note">Эти значения подставляются в <b>каждый</b> запрос «Попробовать» на всех эндпоинтах и версиях. Хранятся в <code>localStorage</code> этого браузера.</div>
+    <h4>Headers</h4>
+    <div id="headersList"></div>
+    <button class="add-row-btn" id="addHeaderBtn">+ добавить header</button>
+    <h4>Cookies</h4>
+    <div class="drawer-note">Браузер не даёт странице выставить заголовок <code>Cookie</code> на чужой домен — куки попадут в curl, но не в запрос из браузера.</div>
+    <div id="cookiesList"></div>
+    <button class="add-row-btn" id="addCookieBtn">+ добавить cookie</button>
+  </div>
+  <div class="drawer-foot">
+    <button class="pill-btn" id="exportGlobalBtn">Экспорт JSON</button>
+    <label class="pill-btn" style="cursor:pointer;">Импорт JSON<input type="file" id="importGlobalInput" accept="application/json" class="hidden"></label>
+    <button class="exec-btn" id="saveGlobalBtn">Сохранить</button>
+  </div>
+</aside>
+
+<!-- ============ AUTHORIZE MODAL ============ -->
+<div class="modal-backdrop" id="authModalBackdrop">
+  <div class="modal" role="dialog" aria-label="Авторизация">
+    <div class="modal-head">
+      <h3>Авторизация</h3>
+      <button class="icon-btn" id="authCloseBtn" title="Закрыть"></button>
+    </div>
+    <div class="modal-body" id="authModalBody"></div>
+    <div class="modal-foot">
+      <button class="pill-btn" id="authLogoutAllBtn">Сбросить всё</button>
+      <button class="exec-btn" id="authSaveBtn">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DIFF MODAL ============ -->
+<div class="modal-backdrop" id="diffModalBackdrop">
+  <div class="modal" role="dialog" aria-label="Сравнение версий">
+    <div class="modal-head">
+      <div class="diff-controls">
+        <h3>Изменения</h3>
+        <select class="select" id="diffFromSelect" title="Из версии"></select>
+        <span class="muted">→</span>
+        <select class="select" id="diffToSelect" title="В версию"></select>
+      </div>
+      <button class="icon-btn" id="diffCloseBtn" title="Закрыть"></button>
+    </div>
+    <div class="modal-body" id="diffModalBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script type="application/json" id="hs-data">{{data}}</script>
+<script>
+{{scripts}}
+</script>
+</body>
+</html>

@@ -112,6 +112,10 @@ class DocController(NamedTuple):
 
     `security=None` inherits from the routers; `security=()` marks
     the route as explicitly public.
+
+    `hidden=True` leaves the route out of the document altogether —
+    e.g. the route serving the documentation page itself. It's still
+    served as usual; only the docs don't mention it.
     """
 
     summary: str | None = None
@@ -125,6 +129,7 @@ class DocController(NamedTuple):
     cookies: Mapping[str, DocParam] | None = None
     response_description: str | None = None
     response_headers: Mapping[str, DocParam] | None = None
+    hidden: bool = False
 
 
 class DocRouter(NamedTuple):
@@ -163,3 +168,21 @@ class DocApp(NamedTuple):
     contact: DocContact | None = None
     license_info: DocLicense | None = None
     servers: Sequence[DocServer] = ()
+
+
+class DocUI(NamedTuple):
+    """How the HTML documentation page (`generate_docs_html`) looks —
+    the page, not the API it describes, so it lives apart from
+    `DocApp`.
+
+    `name` defaults to the API title. `logo` and `favicon` are either
+    a short text (initials, an emoji) or an image URL / `data:` URI.
+    `accent` is a `#rgb` / `#rrggbb` color; `accent_soft` (the second
+    stop of the logo gradient) defaults to a lighter shade of it.
+    """
+
+    name: str | None = None
+    logo: str | None = None
+    accent: str = "#ff6b35"
+    accent_soft: str | None = None
+    favicon: str | None = None

@@ -1,0 +1,22 @@
+:root[data-theme="light"] {
+  --bg: #f6f7f9;
+  --bg-alt: #ffffff;
+  --bg-elevated: #ffffff;
+  --border: #e2e5ea;
+  --text: #1b2129;
+  --text-dim: #5c6673;
+  --text-faint: #8a94a1;
+  --code-bg: #0e1116;
+  --code-text: #c9d6e3;
+  --success: #1a7f37;
+  --success-bg: rgba(26, 127, 55, .10);
+  --danger: #cf222e;
+  --danger-bg: rgba(207, 34, 46, .08);
+  --warning: #9a6700;
+  --warning-bg: rgba(154, 103, 0, .10);
+  --info: #0969da;
+  --info-bg: rgba(9, 105, 218, .08);
+  --overlay: rgba(20, 22, 26, .55);
+  --shadow: 0 12px 32px rgba(20, 22, 30, .12);
+  color-scheme: light;
+}

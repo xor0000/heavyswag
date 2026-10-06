@@ -30,6 +30,7 @@ from heavyswag.routes.application import HeavySwag
 from heavyswag.routes.router import HeavyRouter
 from heavyswag.specify.request import Body, Query, Request
 from heavyswag.specify.response import Response
+from heavyswag.testing import run_test
 from heavyswag.validation import DateTimeField, NumField, StrField
 
 
@@ -834,3 +835,49 @@ def test_to_yaml_quotes_ambiguous_keys_and_scalars() -> None:
     }
 
     assert yaml.safe_load(to_yaml(value)) == value
+
+
+# hidden
+
+
+def test_hidden_route_is_left_out_with_everything_only_it_uses() -> None:
+    class _Secret(NamedTuple):
+        value: str
+
+    router = HeavyRouter("/")
+
+    @router.get("/items")
+    async def items(_: Request, __: _Empty) -> None:
+        return None
+
+    @router.get(
+        "/doc",
+        doc=DocController(
+            hidden=True,
+            tags=[DocTag("Internal")],
+            security=[HTTPBasic()],
+            raises=[_TakenError],
+        ),
+    )
+    async def doc(_: Request, __: _Empty) -> _Secret:
+        raise NotImplementedError
+
+    spec = build_openapi(_app(router))
+
+    assert list(spec["paths"]) == ["/items"]
+    assert "tags" not in spec
+    assert "components" not in spec
+
+
+@pytest.mark.asyncio
+async def test_hidden_route_is_still_served() -> None:
+    router = HeavyRouter("/")
+
+    @router.get("/doc", doc=DocController(hidden=True))
+    async def doc(_: Request, __: _Empty) -> str:
+        return "page"
+
+    response = await run_test(_app(router)).get("/doc")
+
+    assert response.status_code == 200  # noqa: PLR2004
+    assert response.text == "page"
