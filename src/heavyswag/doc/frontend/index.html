@@ -28,8 +28,6 @@
   </div>
 
   <div class="topbar-right">
-    <select class="select hidden" id="versionSelect" title="Версия API"></select>
-    <button class="pill-btn hidden" id="diffBtn" title="Сравнить версии">⇄ Diff</button>
     <button class="pill-btn auth-btn hidden" id="authBtn" title="Авторизация по securitySchemes"></button>
     <button class="icon-btn" id="globalSettingsBtn" title="Глобальные заголовки / куки"></button>
     <button class="icon-btn" id="themeToggleBtn" title="Светлая / тёмная тема"></button>
@@ -77,22 +75,6 @@
       <button class="pill-btn" id="authLogoutAllBtn">Сбросить всё</button>
       <button class="exec-btn" id="authSaveBtn">Сохранить</button>
     </div>
-  </div>
-</div>
-
-<!-- ============ DIFF MODAL ============ -->
-<div class="modal-backdrop" id="diffModalBackdrop">
-  <div class="modal" role="dialog" aria-label="Сравнение версий">
-    <div class="modal-head">
-      <div class="diff-controls">
-        <h3>Изменения</h3>
-        <select class="select" id="diffFromSelect" title="Из версии"></select>
-        <span class="muted">→</span>
-        <select class="select" id="diffToSelect" title="В версию"></select>
-      </div>
-      <button class="icon-btn" id="diffCloseBtn" title="Закрыть"></button>
-    </div>
-    <div class="modal-body" id="diffModalBody"></div>
   </div>
 </div>
 

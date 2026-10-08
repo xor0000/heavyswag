@@ -10,4 +10,4 @@ test:
     uv run pytest .
 
 doc:
-    zensical serve
+    uv run zensical serve

@@ -82,11 +82,16 @@ class HTTPBasic(NamedTuple):
 
 
 class APIKey(NamedTuple):
-    """An API key carried in a header, query parameter or cookie
-    called `param_name`."""
+    """An API key carried in a header or a cookie called `param_name`.
+
+    Never in the query string: a query value is a DTO field
+    (`Query[...]`), declared and validated like any other — not
+    something auth can quietly add to every request. (A key in the URL
+    also ends up in logs and browser history.)
+    """
 
     param_name: str
-    location: Literal["header", "query", "cookie"] = "header"
+    location: Literal["header", "cookie"] = "header"
     name: str = "apiKeyAuth"
     description: str | None = None
 
@@ -113,6 +118,12 @@ class DocController(NamedTuple):
     `security=None` inherits from the routers; `security=()` marks
     the route as explicitly public.
 
+    `success_status_code` is the status the docs show for a successful
+    response. Documentation only: what's actually sent is whatever the
+    controller returns — a bare DTO is a `200`, any other status comes
+    from an explicit `Response(status_code=...)`, so keep the two in
+    sync.
+
     `hidden=True` leaves the route out of the document altogether —
     e.g. the route serving the documentation page itself. It's still
     served as usual; only the docs don't mention it.
@@ -127,6 +138,7 @@ class DocController(NamedTuple):
     raises: Sequence[type[Exception]] = ()
     headers: Mapping[str, DocParam] | None = None
     cookies: Mapping[str, DocParam] | None = None
+    success_status_code: int = 200
     response_description: str | None = None
     response_headers: Mapping[str, DocParam] | None = None
     hidden: bool = False

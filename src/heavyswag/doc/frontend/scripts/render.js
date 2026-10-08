@@ -10,19 +10,19 @@
 
 /* ---------- routes ---------- */
 
-function routeHref(versionName, view, key) {
-  return "#/" + [versionName, view, key].filter((part) => part !== undefined)
+function routeHref(view, key) {
+  return "#/" + [view, key].filter((part) => part !== undefined)
     .map((part) => encodeURIComponent(part)).join("/");
 }
 
-function schemaLinkFor(version) {
-  return (name) => routeHref(version.name, "schema", name);
+function schemaLinkFor() {
+  return (name) => routeHref("schema", name);
 }
 
 /* ---------- sidebar ---------- */
 
 function renderSidebar() {
-  const version = currentVersion();
+  const api = currentApi();
   const query = state.search.trim().toLowerCase();
   const route = state.route;
   const matches = (entry) => !query || [entry.path, entry.method, entry.op.summary, entry.op.operationId, ...entry.tags]
@@ -30,7 +30,7 @@ function renderSidebar() {
 
   const itemHtml = (entry, view) => {
     const active = route.view === view && route.key === entry.key;
-    const secured = requiresAuth(operationSecurity(version.spec, entry.op));
+    const secured = requiresAuth(operationSecurity(api.spec, entry.op));
     return `<div class="ep-item ${active ? "active" : ""} ${entry.deprecated ? "deprecated" : ""}" data-nav="${view}" data-key="${escapeHtml(entry.key)}" title="${escapeHtml(entry.op.summary || entry.path)}">
       <span class="m-tag ${methodClass(entry.method)}">${entry.method}</span>
       <span class="path">${escapeHtml(entry.path)}</span>
@@ -48,14 +48,14 @@ function renderSidebar() {
   };
 
   let html = `<div class="nav-link ${route.view === "overview" ? "active" : ""}" data-nav="overview">${ICONS.home} Обзор API</div>`;
-  for (const group of version.groups) {
+  for (const group of api.groups) {
     const items = group.ops.filter(matches).map((entry) => itemHtml(entry, "op"));
     html += groupHtml(`tag:${group.name}`, group.name, items, items.length, group.tag.description);
   }
-  const hooks = version.webhooks.filter(matches).map((entry) => itemHtml(entry, "webhook"));
+  const hooks = api.webhooks.filter(matches).map((entry) => itemHtml(entry, "webhook"));
   html += groupHtml("webhooks", "Webhooks", hooks, hooks.length);
 
-  const schemaNames = Object.keys((version.spec.components || {}).schemas || {})
+  const schemaNames = Object.keys((api.spec.components || {}).schemas || {})
     .filter((name) => !query || name.toLowerCase().includes(query));
   const schemaItems = schemaNames.map((name) => (
     `<div class="ep-item ${route.view === "schema" && route.key === name ? "active" : ""}" data-nav="schema" data-key="${escapeHtml(name)}">
@@ -66,7 +66,7 @@ function renderSidebar() {
   html += groupHtml("schemas", "Схемы", schemaItems, schemaItems.length);
 
   const sidebar = byId("sidebar");
-  const found = version.ops.some(matches) || hooks.length || schemaItems.length;
+  const found = api.ops.some(matches) || hooks.length || schemaItems.length;
   sidebar.innerHTML = html + (query && !found ? '<div class="sidebar-empty">Ничего не найдено</div>' : "");
 
   sidebar.querySelectorAll("[data-toggle-group]").forEach((node) => node.addEventListener("click", () => {
@@ -76,35 +76,35 @@ function renderSidebar() {
     renderSidebar();
   }));
   sidebar.querySelectorAll("[data-nav]").forEach((node) => node.addEventListener("click", () => {
-    navigate(version.name, node.dataset.nav, node.dataset.key);
+    navigate(node.dataset.nav, node.dataset.key);
   }));
 }
 
 /* ---------- page dispatch ---------- */
 
 function renderMain() {
-  const version = currentVersion();
+  const api = currentApi();
   const route = state.route;
   const main = byId("mainContent");
   if (route.view === "op" || route.view === "webhook") {
-    const list = route.view === "op" ? version.ops : version.webhooks;
+    const list = route.view === "op" ? api.ops : api.webhooks;
     const entry = list.find((item) => item.key === route.key);
-    if (entry) return renderOperationPage(version, entry);
+    if (entry) return renderOperationPage(api, entry);
   }
-  if (route.view === "schema" && ((version.spec.components || {}).schemas || {})[route.key] !== undefined) {
-    return renderSchemaPage(version, route.key);
+  if (route.view === "schema" && ((api.spec.components || {}).schemas || {})[route.key] !== undefined) {
+    return renderSchemaPage(api, route.key);
   }
   if (route.view !== "overview") {
-    main.innerHTML = `<div class="callout info">${ICONS.info}<div><b>В версии ${escapeHtml(version.name)} этого нет</b>Выберите эндпоинт или схему слева.</div></div>`;
+    main.innerHTML = `<div class="callout info">${ICONS.info}<div><b>Такой страницы нет</b>Выберите эндпоинт или схему слева.</div></div>`;
     return undefined;
   }
-  return renderOverview(version);
+  return renderOverview(api);
 }
 
 /* ---------- overview ---------- */
 
-function renderOverview(version) {
-  const spec = version.spec;
+function renderOverview(api) {
+  const spec = api.spec;
   const info = spec.info || {};
   const schemes = securitySchemesOf(spec);
   const schemaCount = Object.keys((spec.components || {}).schemas || {}).length;
@@ -124,7 +124,7 @@ function renderOverview(version) {
     ${Object.entries(server.variables || {}).map(([name, variable]) => `<div class="faint">{${escapeHtml(name)}} = ${escapeHtml(variable.default)}${variable.enum ? ` (${variable.enum.map(escapeHtml).join(" | ")})` : ""}${variable.description ? ` — ${escapeHtml(variable.description)}` : ""}</div>`).join("")}
   </div>`).join("");
 
-  const tags = version.groups.map((group) => `<div class="tag-row" data-nav="op" data-key="${escapeHtml(group.ops[0].key)}">
+  const tags = api.groups.map((group) => `<div class="tag-row" data-nav="op" data-key="${escapeHtml(group.ops[0].key)}">
     <span class="tag-name">${escapeHtml(group.name)}</span>
     <span class="md dim small">${renderMarkdown(group.tag.description || "")}${group.tag.externalDocs ? externalDocsHtml(group.tag.externalDocs) : ""}</span>
     <span class="faint" style="margin-left:auto;">${group.ops.length}</span>
@@ -139,7 +139,7 @@ function renderOverview(version) {
       <h1 class="plain">${escapeHtml(info.title || "API")}</h1>
       ${info.summary ? `<p class="ep-summary">${escapeHtml(info.summary)}</p>` : ""}
       <div class="badges-row">
-        <span class="badge neutral">версия ${escapeHtml(info.version || version.name)}</span>
+        ${info.version ? `<span class="badge neutral">версия ${escapeHtml(info.version)}</span>` : ""}
         <span class="badge neutral mono">OpenAPI ${escapeHtml(spec.openapi || "")}</span>
         ${spec.jsonSchemaDialect ? `<span class="badge neutral mono">${escapeHtml(spec.jsonSchemaDialect)}</span>` : ""}
       </div>
@@ -148,19 +148,19 @@ function renderOverview(version) {
     ${meta.length ? `<div class="muted" style="margin-top:12px;display:flex;flex-direction:column;gap:2px;">${meta.map((line) => `<div>${line}</div>`).join("")}</div>` : ""}
     ${spec.externalDocs ? `<div style="margin-top:8px;">${externalDocsHtml(spec.externalDocs)}</div>` : ""}
     <div class="section"><div class="overview-grid">
-      ${statCard("Эндпоинтов", version.ops.length)}
-      ${statCard("Групп", version.groups.length)}
+      ${statCard("Эндпоинтов", api.ops.length)}
+      ${statCard("Групп", api.groups.length)}
       ${statCard("Схем", schemaCount)}
-      ${version.webhooks.length ? statCard("Вебхуков", version.webhooks.length) : ""}
+      ${api.webhooks.length ? statCard("Вебхуков", api.webhooks.length) : ""}
     </div></div>
     ${servers ? `<div class="section"><h2>Серверы</h2>${servers}</div>` : ""}
     ${tags ? `<div class="section"><h2>Группы</h2>${tags}</div>` : ""}
     ${security ? `<div class="section"><h2>Авторизация</h2>${security}</div>` : ""}
     <div class="section"><h2>Спецификация</h2><button class="pill-btn" id="downloadSpecBtn" style="display:inline-flex;">Скачать openapi.json</button></div>`;
 
-  bindNavLinks(version);
+  bindNavLinks();
   byId("downloadSpecBtn").addEventListener("click", () => {
-    downloadBlob(new Blob([prettyJson(spec)], { type: "application/json" }), `openapi-${version.name}.json`);
+    downloadBlob(new Blob([prettyJson(spec)], { type: "application/json" }), "openapi.json");
   });
 }
 
@@ -172,21 +172,21 @@ function externalDocsHtml(docs) {
   return `<a href="${escapeHtml(safeUrl(docs.url || ""))}" target="_blank" rel="noopener noreferrer">${escapeHtml(docs.description || docs.url)} ${ICONS.external}</a>`;
 }
 
-function bindNavLinks(version) {
+function bindNavLinks() {
   byId("mainContent").querySelectorAll("[data-nav]").forEach((node) => node.addEventListener("click", () => {
-    navigate(version.name, node.dataset.nav, node.dataset.key);
+    navigate(node.dataset.nav, node.dataset.key);
   }));
   byId("mainContent").querySelectorAll("[data-open-auth]").forEach((node) => node.addEventListener("click", openAuthModal));
 }
 
 /* ---------- schema page ---------- */
 
-function renderSchemaPage(version, name) {
-  const spec = version.spec;
+function renderSchemaPage(api, name) {
+  const spec = api.spec;
   const ref = { $ref: `#/components/schemas/${name.replace(/~/g, "~0").replace(/\//g, "~1")}` };
   const schema = deref(spec, ref) || {};
   const needle = JSON.stringify(ref.$ref);
-  const usedBy = version.ops.filter((entry) => JSON.stringify(entry.op).includes(needle) || JSON.stringify(entry.params).includes(needle));
+  const usedBy = api.ops.filter((entry) => JSON.stringify(entry.op).includes(needle) || JSON.stringify(entry.params).includes(needle));
   const usedBySchemas = Object.entries((spec.components || {}).schemas || {})
     .filter(([other, value]) => other !== name && JSON.stringify(value).includes(needle)).map(([other]) => other);
 
@@ -196,25 +196,25 @@ function renderSchemaPage(version, name) {
       <div class="badges-row"><span class="badge neutral mono">${escapeHtml(typeLabel(spec, schema))}</span>${schema.deprecated ? `<span class="badge deprecated">${ICONS.warn} Deprecated</span>` : ""}</div>
     </div>
     <div class="section split">
-      <div><h2 class="sub-title">Структура</h2>${renderSchemaTree(spec, ref, "schema", schemaLinkFor(version))}</div>
+      <div><h2 class="sub-title">Структура</h2>${renderSchemaTree(spec, ref, "schema", schemaLinkFor())}</div>
       <div><h2 class="sub-title">Пример</h2><pre class="example">${escapeHtml(prettyJson(exampleFromSchema(spec, ref, "response")))}</pre></div>
     </div>
     ${usedBy.length || usedBySchemas.length ? `<div class="section"><h2>Используется</h2>
       ${usedBy.map((entry) => `<div class="ep-item" data-nav="op" data-key="${escapeHtml(entry.key)}"><span class="m-tag ${methodClass(entry.method)}">${entry.method}</span><span class="path">${escapeHtml(entry.path)}</span></div>`).join("")}
       ${usedBySchemas.map((other) => `<div class="ep-item" data-nav="schema" data-key="${escapeHtml(other)}"><span class="m-tag m-schema">{ }</span><span class="path">${escapeHtml(other)}</span></div>`).join("")}
     </div>` : ""}`;
-  bindNavLinks(version);
+  bindNavLinks();
 }
 
 /* ---------- operation page ---------- */
 
-function draftKeyOf(version, entry) {
-  return `${version.name}|${entry.kind}|${entry.key}`;
+function draftKeyOf(entry) {
+  return `${entry.kind}|${entry.key}`;
 }
 
-function getDraft(version, entry) {
-  const key = draftKeyOf(version, entry);
-  if (!state.drafts[key]) state.drafts[key] = initialDraft(version.spec, entry);
+function getDraft(api, entry) {
+  const key = draftKeyOf(entry);
+  if (!state.drafts[key]) state.drafts[key] = initialDraft(api.spec, entry);
   return state.drafts[key];
 }
 
@@ -262,12 +262,12 @@ function resetBodyDraft(spec, entry, draft, media, exampleIndex = 0) {
   }
 }
 
-function renderOperationPage(version, entry) {
-  const spec = version.spec;
+function renderOperationPage(api, entry) {
+  const spec = api.spec;
   const op = entry.op;
   const interactive = entry.kind === "path";
-  const draft = getDraft(version, entry);
-  const ctx = { spec, entry, draft, draftKey: draftKeyOf(version, entry), version };
+  const draft = getDraft(api, entry);
+  const ctx = { spec, entry, draft, draftKey: draftKeyOf(entry) };
   const requirements = operationSecurity(spec, op);
   const secured = requiresAuth(requirements);
 
@@ -277,7 +277,6 @@ function renderOperationPage(version, entry) {
       ${op.summary ? `<p class="ep-summary">${escapeHtml(op.summary)}</p>` : ""}
       <div class="badges-row">
         ${entry.tags.map((tag) => `<span class="badge neutral">${escapeHtml(tag)}</span>`).join("")}
-        ${state.versions.length > 1 ? `<span class="badge neutral">${escapeHtml(version.name)}</span>` : ""}
         ${op.operationId ? `<span class="badge neutral mono" title="operationId">${escapeHtml(op.operationId)}</span>` : ""}
         ${entry.deprecated ? `<span class="badge deprecated">${ICONS.warn} Deprecated</span>` : ""}
         ${secured ? `<span class="badge protected">${ICONS.lock} ${escapeHtml(describeRequirements(requirements))}</span>` : ""}
@@ -304,12 +303,12 @@ function renderOperationPage(version, entry) {
   html += paramsSectionHtml(spec, entry, draft, interactive);
   html += bodySectionHtml(ctx, interactive);
   if (interactive) html += tryItSectionHtml();
-  html += responsesSectionHtml(version, entry);
-  html += callbacksSectionHtml(version, entry);
+  html += responsesSectionHtml(api, entry);
+  html += callbacksSectionHtml(api, entry);
 
   const main = byId("mainContent");
   main.innerHTML = html;
-  bindNavLinks(version);
+  bindNavLinks();
   bindDocWidgets(main);
   if (interactive) bindTryIt(ctx);
 }
@@ -366,7 +365,7 @@ function paramsSectionHtml(spec, entry, draft, interactive) {
         ${param.deprecated ? '<span class="sch-flag dep">deprecated</span>' : ""}
       </td>
       <td>
-        <div class="field-type">${typeLabelHtml({ spec, schemaLink: schemaLinkFor(currentVersion()) }, schema)}${param.content ? ` <span class="faint">${escapeHtml(Object.keys(param.content)[0])}</span>` : ""}</div>
+        <div class="field-type">${typeLabelHtml({ spec, schemaLink: schemaLinkFor() }, schema)}${param.content ? ` <span class="faint">${escapeHtml(Object.keys(param.content)[0])}</span>` : ""}</div>
         ${constraints.length || style ? `<div class="field-cons">${escapeHtml([...constraints, style].filter(Boolean).join(" · "))}</div>` : ""}
         ${Array.isArray(s.enum) && !interactive ? enumHtml(s.enum) : ""}
       </td>
@@ -416,7 +415,7 @@ function bodySectionHtml(ctx, interactive) {
   const medias = Object.keys(body.content);
   const media = interactive ? draft.media : medias[0];
   const mediaObj = body.content[media] || {};
-  const link = schemaLinkFor(ctx.version);
+  const link = schemaLinkFor();
 
   let html = `<div class="section"><h2>Тело запроса ${body.required ? '<span class="badge protected">обязательно</span>' : '<span class="badge neutral">необязательно</span>'}</h2>
     ${body.description ? `<div class="md dim" style="margin-bottom:10px;">${renderMarkdown(body.description)}</div>` : ""}`;
@@ -717,12 +716,12 @@ function sortedResponseCodes(responses) {
   return Object.keys(responses || {}).sort((a, b) => rank(a) - rank(b));
 }
 
-function responsesSectionHtml(version, entry) {
-  const spec = version.spec;
+function responsesSectionHtml(api, entry) {
+  const spec = api.spec;
   const responses = entry.op.responses || {};
   const codes = sortedResponseCodes(responses);
   if (!codes.length) return "";
-  const link = schemaLinkFor(version);
+  const link = schemaLinkFor();
   const firstSuccess = codes.find((code) => /^2/.test(code));
   const idBase = `resp-${entry.kind}-${entry.key}`.replace(/[^\w-]/g, "_");
 
@@ -737,7 +736,7 @@ function responsesSectionHtml(version, entry) {
         <td class="field-type">${escapeHtml(typeLabel(spec, schema))}</td>
         <td>${header.description ? `<div class="md dim small">${renderMarkdown(header.description)}</div>` : ""}${header.example !== undefined ? `<div class="field-cons">пример: ${escapeHtml(toInputText(header.example))}</div>` : ""}</td></tr>`;
     }).join("");
-    const links = Object.entries(response.links || {}).map(([name, raw]) => linkHtml(version, name, deref(spec, raw) || {})).join("");
+    const links = Object.entries(response.links || {}).map(([name, raw]) => linkHtml(api, name, deref(spec, raw) || {})).join("");
     const content = response.content && Object.keys(response.content).length
       ? contentBlocksHtml(spec, response.content, "response", link, `${idBase}-${index}`)
       : '<div class="faint">Без тела</div>';
@@ -783,10 +782,10 @@ function contentBlocksHtml(spec, content, mode, link, idBase) {
   return tabs + blocks;
 }
 
-function linkHtml(version, name, link) {
-  const target = link.operationId && version.ops.find((entry) => entry.op.operationId === link.operationId);
+function linkHtml(api, name, link) {
+  const target = link.operationId && api.ops.find((entry) => entry.op.operationId === link.operationId);
   const targetHtml = target
-    ? `<a href="${escapeHtml(routeHref(version.name, "op", target.key))}">${escapeHtml(link.operationId)}</a>`
+    ? `<a href="${escapeHtml(routeHref("op", target.key))}">${escapeHtml(link.operationId)}</a>`
     : escapeHtml(link.operationId || link.operationRef || "");
   const params = Object.entries(link.parameters || {}).map(([key, value]) => `${key} = ${toInputText(value)}`).join(", ");
   return `<div class="field-cons" style="margin-bottom:4px;"><b>${escapeHtml(name)}</b> → ${targetHtml}${params ? ` (${escapeHtml(params)})` : ""}${link.requestBody !== undefined ? escapeHtml(` · body = ${toInputText(link.requestBody)}`) : ""}</div>
@@ -808,8 +807,8 @@ function bindDocWidgets(root) {
 
 /* ---------- callbacks ---------- */
 
-function callbacksSectionHtml(version, entry) {
-  const spec = version.spec;
+function callbacksSectionHtml(api, entry) {
+  const spec = api.spec;
   const callbacks = Object.entries(entry.op.callbacks || {});
   if (!callbacks.length) return "";
   const blocks = callbacks.map(([name, raw]) => {
@@ -824,8 +823,8 @@ function callbacksSectionHtml(version, entry) {
         <summary><span class="m-tag ${methodClass(cb.method)}">${cb.method}</span><span class="mono">${escapeHtml(cb.path)}</span>${cb.op.summary ? `<span class="muted">${escapeHtml(cb.op.summary)}</span>` : ""}${ICONS.chev}</summary>
         <div class="resp-body">
           ${cb.op.description ? `<div class="md dim small">${renderMarkdown(cb.op.description)}</div>` : ""}
-          ${body ? `<div class="sub-title">Тело</div>${contentBlocksHtml(spec, body.content, "request", schemaLinkFor(version), `cb-${name}-${cb.method}`.replace(/[^\w-]/g, "_"))}` : ""}
-          ${responsesSectionHtml(version, cb).replace('<div class="section"><h2>Ответы</h2>', '<div><div class="sub-title">Ожидаемые ответы</div>')}
+          ${body ? `<div class="sub-title">Тело</div>${contentBlocksHtml(spec, body.content, "request", schemaLinkFor(), `cb-${name}-${cb.method}`.replace(/[^\w-]/g, "_"))}` : ""}
+          ${responsesSectionHtml(api, cb).replace('<div class="section"><h2>Ответы</h2>', '<div><div class="sub-title">Ожидаемые ответы</div>')}
         </div>
       </details>`;
     }).join("")}`;

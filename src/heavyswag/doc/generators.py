@@ -304,10 +304,18 @@ class _OpenAPIBuilder:
     ) -> dict[str, Any]:
         route = entry.route
         responses: dict[str, Any] = {}
+        success_status = doc.success_status_code
+        if not 100 <= success_status <= 599:  # noqa: PLR2004
+            msg = (
+                f"Route '{route.method.name} {entry.path}' declares "
+                f"success_status_code={success_status}, which isn't an "
+                "HTTP status code."
+            )
+            raise DocError(msg)
 
         success: dict[str, Any] = {
             "description": doc.response_description
-            or _phrase(route.status_code),
+            or _phrase(success_status),
         }
         content = self._content(output_dto_type(route.controller))
         if content is not None:
@@ -317,7 +325,7 @@ class _OpenAPIBuilder:
                 name: _response_header(header)
                 for name, header in doc.response_headers.items()
             }
-        responses[str(route.status_code)] = success
+        responses[str(success_status)] = success
 
         raised = list(_REQUEST_ERRORS) if has_input else []
         raised.extend(doc.raises)
@@ -334,7 +342,7 @@ class _OpenAPIBuilder:
                 raise DocError(msg)
 
             status_code, message = mapped
-            if status_code == route.status_code:
+            if status_code == success_status:
                 msg = (
                     f"Route '{route.method.name} {entry.path}' raises "
                     f"{exc_type.__name__} with status {status_code}, the "
@@ -687,6 +695,13 @@ def _security_scheme(scheme: SecurityScheme) -> dict[str, Any]:
     elif isinstance(scheme, HTTPBasic):
         result = {"type": "http", "scheme": "basic"}
     elif isinstance(scheme, APIKey):
+        if scheme.location not in {"header", "cookie"}:
+            msg = (
+                f"APIKey {scheme.param_name!r} has location "
+                f"{scheme.location!r} — only 'header' or 'cookie' are "
+                "supported; a query value belongs on the DTO as Query[...]."
+            )
+            raise DocError(msg)
         result = {"type": "apiKey", "in": scheme.location, "name": scheme.param_name}
     else:
         msg = f"Unknown security scheme {scheme!r}."

@@ -115,7 +115,7 @@ def test_include_root_router_into_a_sub_router() -> None:
         users_router.include_router(HeavyRouter("/"))
 
 
-def test_route_defaults_to_status_200_without_doc() -> None:
+def test_route_without_doc() -> None:
     router = HeavyRouter("/")
 
     @router.get("/")
@@ -123,20 +123,18 @@ def test_route_defaults_to_status_200_without_doc() -> None:
         return None
 
     (route,) = router.routes
-    assert route.status_code == 200  # noqa: PLR2004
     assert route.doc is None
 
 
 @pytest.mark.parametrize("method", ["get", "post", "put", "patch", "delete"])
-def test_route_keeps_status_code_and_doc(method: str) -> None:
+def test_route_keeps_doc(method: str) -> None:
     router = HeavyRouter("/", doc=DocRouter(tags=[DocTag("Users")]))
-    doc = DocController(summary="Create")
+    doc = DocController(summary="Create", success_status_code=201)
 
-    @getattr(router, method)("/", status_code=201, doc=doc)
+    @getattr(router, method)("/", doc=doc)
     async def controller(_: Request, __: tuple[()]) -> None:
         return None
 
     (route,) = router.routes
-    assert route.status_code == 201  # noqa: PLR2004
     assert route.doc is doc
     assert router.doc == DocRouter(tags=[DocTag("Users")])

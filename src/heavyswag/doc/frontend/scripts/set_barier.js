@@ -3,8 +3,7 @@
  * to the operation's `security` requirements.
  *
  * Credentials live in `sessionStorage` only — they're secrets, and
- * shouldn't outlive the tab. They're shared by every version on the
- * page, keyed by scheme name. */
+ * shouldn't outlive the tab. They're keyed by scheme name. */
 
 const AUTH_STORAGE_KEY = "hs_auth";
 
@@ -44,7 +43,7 @@ function isSchemeAuthorized(name, scheme) {
 
 function updateAuthButton() {
   const button = byId("authBtn");
-  const schemes = securitySchemesOf(currentVersion().spec);
+  const schemes = securitySchemesOf(currentApi().spec);
   button.classList.toggle("hidden", schemes.length === 0);
   if (!schemes.length) return;
   const authorized = schemes.filter(([name, scheme]) => isSchemeAuthorized(name, scheme)).length;
@@ -67,7 +66,7 @@ function closeAuthModal() {
 }
 
 function renderAuthModal() {
-  const spec = currentVersion().spec;
+  const spec = currentApi().spec;
   const body = byId("authModalBody");
   const schemes = securitySchemesOf(spec);
   body.innerHTML = schemes.map(([name, scheme]) => authCardHtml(name, scheme)).join("")

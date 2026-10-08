@@ -9,7 +9,7 @@
 const SCHEMA_MAX_DEPTH = 7;
 
 /* `schemaLink(name)` returns the href of a component schema's page —
- * provided by render.js, which knows the current version. */
+ * provided by render.js, which owns the routes. */
 function renderSchemaTree(spec, schema, mode, schemaLink) {
   if (schema === undefined) return '<div class="faint">Схема не указана</div>';
   const ctx = { spec, mode, schemaLink };

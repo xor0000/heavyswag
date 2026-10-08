@@ -304,21 +304,17 @@ class Serializer:
 
         return params
 
-    def wrap_response(
-        self,
-        result: Any,  # noqa: ANN401
-        status_code: int = 200,
-    ) -> Response[Any]:
+    def wrap_response(self, result: Any) -> Response[Any]:  # noqa: ANN401
         """A controller may return a bare DTO instead of `Response[DTO]`
         when it only needs to set the body. Normalize both shapes to
         a `Response` here, once, instead of at every call site. A bare
-        DTO gets the route's declared `status_code`; an explicit
-        `Response` keeps its own.
+        DTO is always a `200` — any other status is set explicitly, by
+        returning a `Response`.
         """
         if isinstance(result, Response):
             return result
 
-        response: Response[Any] = Response(status_code=status_code)
+        response: Response[Any] = Response()
         response.set_body(result)
         return response
 

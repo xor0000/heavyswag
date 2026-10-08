@@ -1025,18 +1025,6 @@ def test_coerce_enum_rejects_unknown_value(value: object, target: type) -> None:
         serializer._coerce(value, target)  # noqa: SLF001
 
 
-def test_wrap_response_uses_route_status_for_bare_value() -> None:
-    wrapped = Serializer(b"").wrap_response("hello", 201)
-
-    assert wrapped.status_code == 201  # noqa: PLR2004
-
-
-def test_wrap_response_keeps_explicit_response_status() -> None:
-    response: Response[str] = Response(status_code=202)
-
-    assert Serializer(b"").wrap_response(response, 201).status_code == 202  # noqa: PLR2004
-
-
 @pytest.mark.parametrize(
     ("body", "content_type"),
     [

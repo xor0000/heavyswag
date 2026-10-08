@@ -197,6 +197,49 @@ async def create_user(request: Request, dto: CreateUser) -> Response[str]:
     return response
 ```
 
+### Content-Type
+
+You don't set `Content-Type` yourself for the usual cases — HeavySwag picks
+it from how the body is actually encoded, so the header always matches what
+goes over the wire:
+
+| The controller returns                                        | `Content-Type`              | Body               |
+| ------------------------------------------------------------- | --------------------------- | ------------------ |
+| `str`                                                         | `text/plain; charset=utf-8` | the string as-is   |
+| `bytes`                                                       | `application/octet-stream`  | the bytes as-is    |
+| anything else — a `NamedTuple`, `list[...]`, `int`, `bool`, … | `application/json`          | serialized to JSON |
+
+Two exceptions:
+
+- **you set it yourself** — an explicit `Content-Type` header (matched
+  case-insensitively) is never overwritten. That's how you send HTML, XML,
+  CSV, an image, or anything else the table doesn't cover;
+- **there's no body** — an empty body, or a `204` / `304` response, gets no
+  `Content-Type` at all.
+
+```python
+@router.get("/page")
+async def page(request: Request, dto: Empty) -> Response[str]:
+    response: Response[str] = Response()
+    response.set_body("<h1>Hello</h1>")
+    response.attach_header("Content-Type", "text/html; charset=utf-8")  # (1)!
+    return response
+```
+
+1.  Without this line the very same body would go out as `text/plain` — the
+    browser would show the markup instead of rendering it.
+
+!!! note "Why JSON isn't limited to `NamedTuple`s"
+    A `list[User]` or a bare `42` is serialized with `json.dumps` just like a
+    `NamedTuple` is, so it *is* JSON — labelling it `text/plain` would make
+    clients (and the generated API docs) treat valid JSON as an opaque
+    string. And `bytes` can be anything — an image, a PDF — so
+    `application/octet-stream` ("binary, type unknown") is the only honest
+    default; set the real type explicitly when you know it.
+
+The OpenAPI generator documents responses by the very same rule, so the
+docs and the real responses never disagree.
+
 ## A typical CRUD
 
 A minimal in-memory "users" CRUD, showing path params, query params, the

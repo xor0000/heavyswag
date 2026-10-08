@@ -1,7 +1,6 @@
 import html
 import json
 import re
-from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -26,7 +25,6 @@ _SCRIPTS = (
     "change_theme.js",
     "set_barier.js",
     "send_request.js",
-    "diff.js",
     "render.js",
     "main.js",
 )
@@ -37,39 +35,24 @@ _PLACEHOLDER = re.compile(r"\{\{(\w+)\}\}")
 
 
 def generate_docs_html(
-    apps: "HeavySwag | Mapping[str, HeavySwag]",
+    app: "HeavySwag",
     file: str | Path,
     ui: DocUI | None = None,
 ) -> None:
-    """Write a self-contained interactive documentation page to
-    `file` — styles, scripts and the OpenAPI document(s) all inlined,
+    """Write a self-contained interactive documentation page for `app`
+    to `file` — styles, scripts and the OpenAPI document all inlined,
     so it opens straight from disk, or can be served as-is by a route.
-
-    `apps` is one app, or several keyed by version label
-    (`{"v1": app_v1, "v2": app_v2}`) — the page then gets a version
-    switch and a diff between any two of them. A single app is
-    labelled by its own `DocApp.version`.
     """
-    Path(file).write_text(_render_page(apps, ui), encoding="utf-8")
+    Path(file).write_text(_render_page(app, ui), encoding="utf-8")
 
 
-def _render_page(
-    apps: "HeavySwag | Mapping[str, HeavySwag]",
-    ui: DocUI | None,
-) -> str:
+def _render_page(app: "HeavySwag", ui: DocUI | None) -> str:
     ui = ui or DocUI()
     _validate_ui(ui)
 
-    specs = _build_specs(apps)
-    first_spec = next(iter(specs.values()))
-    title = ui.name or first_spec["info"]["title"]
-
-    data = {
-        "ui": ui._asdict(),
-        "versions": [
-            {"name": name, "spec": spec} for name, spec in specs.items()
-        ],
-    }
+    spec = build_openapi(app)
+    title = ui.name or spec["info"]["title"]
+    data = {"ui": ui._asdict(), "spec": spec}
 
     template = _read("index.html")
     values = {
@@ -79,20 +62,6 @@ def _render_page(
         "data": _json_for_script(data),
     }
     return _PLACEHOLDER.sub(lambda match: values[match.group(1)], template)
-
-
-def _build_specs(
-    apps: "HeavySwag | Mapping[str, HeavySwag]",
-) -> dict[str, dict[str, Any]]:
-    if not isinstance(apps, Mapping):
-        spec = build_openapi(apps)
-        return {spec["info"]["version"]: spec}
-
-    if not apps:
-        msg = "generate_docs_html needs at least one app."
-        raise DocError(msg)
-
-    return {str(name): build_openapi(app) for name, app in apps.items()}
 
 
 def _validate_ui(ui: DocUI) -> None:

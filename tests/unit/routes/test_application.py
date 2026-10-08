@@ -5,6 +5,7 @@ from typing import NamedTuple
 import pytest
 
 from heavyswag._internal._dto import dto_type
+from heavyswag.doc import DocController
 from heavyswag.errors import HeavySwagError
 from heavyswag.middlewares.setups.cors import CORSMiddleware
 from heavyswag.middlewares.setups.err_handler import (
@@ -386,10 +387,10 @@ async def test_unknown_scope_type_does_nothing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_http_bare_return_uses_route_status_code() -> None:
+async def test_http_bare_return_is_200_whatever_the_docs_say() -> None:
     router = HeavyRouter("/")
 
-    @router.post("/", status_code=201)
+    @router.post("/", doc=DocController(success_status_code=201))
     async def create(_: Request, __: _Empty) -> str:
         return "created"
 
@@ -403,5 +404,5 @@ async def test_http_bare_return_uses_route_status_code() -> None:
     )
 
     start = send.messages[0]
-    assert start["status"] == 201  # noqa: PLR2004
+    assert start["status"] == 200  # noqa: PLR2004
     assert (b"content-type", b"text/plain; charset=utf-8") in start["headers"]

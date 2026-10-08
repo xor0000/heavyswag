@@ -32,9 +32,6 @@ class Route[
     method: HttpMethod
     path: str
     controller: Controller[InDTO, OutDTO, P]  # type: ignore[type-var]
-    # What a bare-DTO return is sent with — an explicit `Response`
-    # keeps its own status (see `Serializer.wrap_response`).
-    status_code: int = 200
     doc: DocController | None = None
 
     def __eq__(self, other: Self) -> bool:  # type: ignore[override]
@@ -60,13 +57,12 @@ class HeavyRouter:
     ](
         self,
         path: str,
-        status_code: int = 200,
         doc: DocController | None = None,
     ) -> Callable[  # type: ignore[type-var]
         [Controller[In, Out, P]],
         Controller[In, Out, P],
     ]:
-        return self._add_route(path, HttpMethod.GET, status_code, doc)
+        return self._add_route(path, HttpMethod.GET, doc)
 
     def post[
         In: tuple[ALLOWED_TYPES, ...] | None,
@@ -75,13 +71,12 @@ class HeavyRouter:
     ](
         self,
         path: str,
-        status_code: int = 200,
         doc: DocController | None = None,
     ) -> Callable[  # type: ignore[type-var]
         [Controller[In, Out, P]],
         Controller[In, Out, P],
     ]:
-        return self._add_route(path, HttpMethod.POST, status_code, doc)
+        return self._add_route(path, HttpMethod.POST, doc)
 
     def put[
         In: tuple[ALLOWED_TYPES, ...] | None,
@@ -90,13 +85,12 @@ class HeavyRouter:
     ](
         self,
         path: str,
-        status_code: int = 200,
         doc: DocController | None = None,
     ) -> Callable[  # type: ignore[type-var]
         [Controller[In, Out, P]],
         Controller[In, Out, P],
     ]:
-        return self._add_route(path, HttpMethod.PUT, status_code, doc)
+        return self._add_route(path, HttpMethod.PUT, doc)
 
     def patch[
         In: tuple[ALLOWED_TYPES, ...] | None,
@@ -105,13 +99,12 @@ class HeavyRouter:
     ](
         self,
         path: str,
-        status_code: int = 200,
         doc: DocController | None = None,
     ) -> Callable[  # type: ignore[type-var]
         [Controller[In, Out, P]],
         Controller[In, Out, P],
     ]:
-        return self._add_route(path, HttpMethod.PATCH, status_code, doc)
+        return self._add_route(path, HttpMethod.PATCH, doc)
 
     def delete[
         In: tuple[ALLOWED_TYPES, ...] | None,
@@ -120,13 +113,12 @@ class HeavyRouter:
     ](
         self,
         path: str,
-        status_code: int = 200,
         doc: DocController | None = None,
     ) -> Callable[  # type: ignore[type-var]
         [Controller[In, Out, P]],
         Controller[In, Out, P],
     ]:
-        return self._add_route(path, HttpMethod.DELETE, status_code, doc)
+        return self._add_route(path, HttpMethod.DELETE, doc)
 
     def include_router(self, router: Self) -> None:
         prefix = router.prefix
@@ -196,7 +188,6 @@ class HeavyRouter:
         self,
         path: str,
         method: HttpMethod,
-        status_code: int,
         doc: DocController | None,
     ) -> Callable[  # type: ignore[type-var]
         [Controller[In, Out, P]],
@@ -210,7 +201,6 @@ class HeavyRouter:
                     path=path,
                     method=method,
                     controller=controller,
-                    status_code=status_code,
                     doc=doc,
                 )
             )

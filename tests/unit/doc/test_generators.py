@@ -107,7 +107,7 @@ def _single_operation(spec: dict[str, Any]) -> dict[str, Any]:
 def _build_users_app(**kwargs: Any) -> HeavySwag:  # noqa: ANN401
     router = HeavyRouter("/")
 
-    @router.post("/users", status_code=201)
+    @router.post("/users", doc=DocController(success_status_code=201))
     async def create_user(_: Request, __: _CreateUser) -> _UserOut:
         """Create a user.
 
@@ -520,8 +520,8 @@ def test_success_response_headers_and_description() -> None:
 
     @router.post(
         "/",
-        status_code=201,
         doc=DocController(
+            success_status_code=201,
             response_description="Done",
             response_headers={
                 "Location": DocParam(
@@ -616,6 +616,18 @@ def test_unregistered_raise_is_rejected() -> None:
         return None
 
     with pytest.raises(DocError, match="isn't registered in the ErrorHandler"):
+        build_openapi(_app(router))
+
+
+@pytest.mark.parametrize("status", [99, 600])
+def test_success_status_code_must_be_an_http_status(status: int) -> None:
+    router = HeavyRouter("/")
+
+    @router.get("/", doc=DocController(success_status_code=status))
+    async def index(_: Request, __: _Empty) -> None:
+        return None
+
+    with pytest.raises(DocError, match="isn't an HTTP status code"):
         build_openapi(_app(router))
 
 
@@ -881,3 +893,30 @@ async def test_hidden_route_is_still_served() -> None:
 
     assert response.status_code == 200  # noqa: PLR2004
     assert response.text == "page"
+
+
+def test_cookie_api_key_is_documented() -> None:
+    router = HeavyRouter("/")
+    cookie_key = APIKey("api_key", location="cookie", name="cookieKey")
+
+    @router.get("/", doc=DocController(security=[cookie_key]))
+    async def index(_: Request, __: _Empty) -> None:
+        return None
+
+    schemes = build_openapi(_app(router))["components"]["securitySchemes"]
+
+    assert schemes == {
+        "cookieKey": {"type": "apiKey", "in": "cookie", "name": "api_key"}
+    }
+
+
+def test_query_api_key_is_rejected() -> None:
+    router = HeavyRouter("/")
+    query_key = APIKey("api_key", location="query")  # type: ignore[arg-type]
+
+    @router.get("/", doc=DocController(security=[query_key]))
+    async def index(_: Request, __: _Empty) -> None:
+        return None
+
+    with pytest.raises(DocError, match="only 'header' or 'cookie'"):
+        build_openapi(_app(router))

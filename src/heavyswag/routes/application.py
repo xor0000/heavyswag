@@ -219,9 +219,7 @@ class _HS_Server:  # noqa: N801
 
         result = await controller(context.request, dto)
 
-        return context.serializer.wrap_response(
-            result, matched.route.status_code
-        )
+        return context.serializer.wrap_response(result)
 
     async def _send_response(
         self,
