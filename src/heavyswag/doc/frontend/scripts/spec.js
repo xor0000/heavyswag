@@ -13,12 +13,11 @@ function resolvePointer(spec, ref) {
   if (typeof ref !== "string" || !ref.startsWith("#")) return undefined;
   const tokens = ref.slice(1).split("/").slice(1)
     .map((token) => decodeURIComponent(token).replace(/~1/g, "/").replace(/~0/g, "~"));
-  let node = spec;
-  for (const token of tokens) {
-    if (node === null || typeof node !== "object") return undefined;
-    node = node[token];
-  }
-  return node;
+  // Own properties only: `#/__proto__/...` or `#/constructor/...` must not
+  // walk off the document into an object's prototype.
+  return tokens.reduce((node, token) => (
+    node !== null && typeof node === "object" && Object.hasOwn(node, token) ? node[token] : undefined
+  ), spec);
 }
 
 function refName(ref) {
@@ -423,10 +422,7 @@ function validateString(s, value, at, errors) {
   if (typeof s.minLength === "number" && length < s.minLength) errors.push(`${at}: at least ${s.minLength} characters`);
   if (typeof s.maxLength === "number" && length > s.maxLength) errors.push(`${at}: at most ${s.maxLength} characters`);
   if (typeof s.pattern === "string") {
-    let regex = null;
-    try { regex = new RegExp(s.pattern, "u"); } catch {
-      try { regex = new RegExp(s.pattern); } catch { regex = null; }
-    }
+    const regex = compilePattern(s.pattern);
     if (regex && !regex.test(value)) errors.push(`${at}: doesn't match the pattern ${s.pattern}`);
   }
   const check = FORMAT_CHECKS[s.format];
@@ -486,9 +482,9 @@ function validateObject(spec, s, value, mode, path, depth, errors) {
   if (typeof s.minProperties === "number" && keys.length < s.minProperties) errors.push(`${at}: at least ${s.minProperties} fields`);
   if (typeof s.maxProperties === "number" && keys.length > s.maxProperties) errors.push(`${at}: at most ${s.maxProperties} fields`);
 
-  const patterns = Object.entries(s.patternProperties || {}).map(([pattern, sub]) => {
-    try { return [new RegExp(pattern, "u"), sub]; } catch { return null; }
-  }).filter(Boolean);
+  const patterns = Object.entries(s.patternProperties || {})
+    .map(([pattern, sub]) => [compilePattern(pattern), sub])
+    .filter(([regex]) => regex !== null);
 
   for (const key of keys) {
     const keyPath = joinPath(path, key);
@@ -509,6 +505,26 @@ function validateObject(spec, s, value, mode, path, depth, errors) {
       errors.push(...validateSchema(spec, s.additionalProperties, value[key], mode, keyPath, depth + 1));
     }
   }
+}
+
+/* A schema `pattern` as a RegExp — with the `u` flag first (JSON Schema
+ * patterns are Unicode), without it if that fails, `null` if it doesn't
+ * compile at all.
+ *
+ * It can't be a literal: the pattern *is* the document's validation
+ * rule. It comes from the API's own validators (which the server runs
+ * on the same input anyway), and is only ever tested against what the
+ * user types into their own tab — the worst a slow pattern can do is
+ * slow down that one page. */
+function compilePattern(pattern) {
+  for (const flags of ["u", ""]) {
+    try {
+      return new RegExp(pattern, flags); // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    } catch {
+      /* not valid with this flag — try the next one */
+    }
+  }
+  return null;
 }
 
 function joinPath(path, key) {
