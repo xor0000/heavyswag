@@ -33,3 +33,15 @@ class Preambule(NamedTuple):
 class Request(NamedTuple):
     headers: list[tuple[str, str]]
     cookies: list[tuple[str, str]]
+
+    def get_header(self, name: str) -> str | None:
+        for header in self.headers:
+            if header[0] == name:
+                return header[1]
+        return None
+
+    def get_cookie(self, key: str) -> str | None:
+        for cookie in self.cookies:
+            if cookie[0] == key:
+                return cookie[1]
+        return None
