@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{title}}</title>
+<link id="favicon" rel="icon" href="data:,">
+<style>
+{{styles}}
+</style>
+</head>
+<body>
+
+<!-- ============ TOPBAR ============ -->
+<header class="topbar">
+  <div class="brand" id="brand" title="API overview">
+    <div class="brand-logo" id="brandLogo"></div>
+    <div>
+      <div class="brand-name" id="brandName"></div>
+      <div class="brand-tag">API Reference</div>
+    </div>
+  </div>
+
+  <div class="topbar-search">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+    <input type="text" id="searchInput" placeholder="Search endpoints, tags, schemas…" autocomplete="off">
+    <kbd>/</kbd>
+  </div>
+
+  <div class="topbar-server">
+    <span class="topbar-label">Server</span>
+    <select class="select" id="serverSelect" title="Where “Try it out” sends requests"></select>
+    <button class="icon-btn hidden" id="serverEditBtn"></button>
+  </div>
+
+  <div class="topbar-right">
+    <button class="pill-btn auth-btn hidden" id="authBtn" title="Authorize with the securitySchemes"></button>
+    <button class="icon-btn" id="globalSettingsBtn" title="Global headers / cookies"></button>
+    <button class="icon-btn" id="themeToggleBtn" title="Light / dark theme"></button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main class="main" id="mainContent"></main>
+</div>
+
+<!-- ============ GLOBAL HEADERS / COOKIES DRAWER ============ -->
+<div class="drawer-backdrop" id="drawerBackdrop"></div>
+<aside class="drawer" id="drawer" aria-label="Global headers and cookies">
+  <div class="drawer-head">
+    <h3>Global headers and cookies</h3>
+    <button class="icon-btn" id="drawerCloseBtn" title="Close"></button>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-note">These values are added to <b>every</b> “Try it out” request, on every endpoint. They are kept in this browser’s <code>localStorage</code>.</div>
+    <h4>Headers</h4>
+    <div id="headersList"></div>
+    <button class="add-row-btn" id="addHeaderBtn">+ add header</button>
+    <h4>Cookies</h4>
+    <div class="drawer-note">A browser doesn’t let a page set the <code>Cookie</code> header for another domain — cookies go into the curl, but not into the request sent from the browser.</div>
+    <div id="cookiesList"></div>
+    <button class="add-row-btn" id="addCookieBtn">+ add cookie</button>
+  </div>
+  <div class="drawer-foot">
+    <button class="pill-btn" id="exportGlobalBtn">Export JSON</button>
+    <label class="pill-btn" style="cursor:pointer;">Import JSON<input type="file" id="importGlobalInput" accept="application/json" class="hidden"></label>
+    <button class="exec-btn" id="saveGlobalBtn">Save</button>
+  </div>
+</aside>
+
+<!-- ============ AUTHORIZE MODAL ============ -->
+<div class="modal-backdrop" id="authModalBackdrop">
+  <div class="modal" role="dialog" aria-label="Authorize">
+    <div class="modal-head">
+      <h3>Authorize</h3>
+      <button class="icon-btn" id="authCloseBtn" title="Close"></button>
+    </div>
+    <div class="modal-body" id="authModalBody"></div>
+    <div class="modal-foot">
+      <button class="pill-btn" id="authLogoutAllBtn">Clear all</button>
+      <button class="exec-btn" id="authSaveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SERVER MODAL ============ -->
+<div class="modal-backdrop" id="serverModalBackdrop">
+  <div class="modal modal-sm" role="dialog" aria-label="Server">
+    <div class="modal-head">
+      <h3 id="serverModalTitle">Custom server URL</h3>
+      <button class="icon-btn" id="serverCloseBtn" title="Close"></button>
+    </div>
+    <div class="modal-body" id="serverModalBody"></div>
+    <div class="modal-foot">
+      <button class="pill-btn" id="serverCancelBtn">Cancel</button>
+      <button class="exec-btn" id="serverSaveBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script type="application/json" id="hs-data">{{data}}</script>
+<script>
+{{scripts}}
+</script>
+</body>
+</html>

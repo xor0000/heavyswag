@@ -51,6 +51,35 @@ def test_main_router_must_be_root() -> None:
         CompressedRadixTree(HeavyRouter("/sub"))
 
 
+def test_search_multi_segment_router_prefix() -> None:
+    """A multi-segment prefix (`/api/v1`) is joined into the route path
+    exactly like a single-segment one, including through several levels
+    of `include_router`.
+    """
+    main_router = HeavyRouter("/")
+    api_router = HeavyRouter("/api/v1")
+    users_router = HeavyRouter("/user-profile")
+
+    api_router.get("/health")(_controller)
+    users_router.get("/{user_id}")(_user_controller)
+
+    api_router.include_router(users_router)
+    main_router.include_router(api_router)
+
+    tree = CompressedRadixTree(main_router)
+
+    health = tree.search(HttpMethod.GET, "/api/v1/health")
+    assert health is not None
+    assert health.route.controller is _controller
+
+    user = tree.search(HttpMethod.GET, "/api/v1/user-profile/42")
+    assert user is not None
+    assert user.params == {"user_id": "42"}
+
+    assert tree.search(HttpMethod.GET, "/api/health") is None
+    assert tree.search(HttpMethod.GET, "/v1/health") is None
+
+
 def test_search_static_and_nested_routes() -> None:
     main_router = HeavyRouter("/")
     users_router = HeavyRouter("/users")

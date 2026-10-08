@@ -1,10 +1,12 @@
 import sys
 from dataclasses import dataclass
+from enum import Enum, IntEnum, StrEnum
 from typing import Annotated, NamedTuple
 
 import pytest
 
 from heavyswag._internal._dto import (
+    FieldSource,
     assemble_dto_validators,
     dto_type,
     output_dto_type,
@@ -12,10 +14,11 @@ from heavyswag._internal._dto import (
     validate_dto_type,
     validate_output_dto_type,
 )
-from heavyswag.errors import RouteTreeError
-from heavyswag.specify.request import Body, Query, Request
+from heavyswag.doc import DocField
+from heavyswag.errors import DocError, RouteTreeError
+from heavyswag.specify.request import Body, Query, QueryMarker, Request
 from heavyswag.specify.response import Response
-from heavyswag.validation import StrField
+from heavyswag.validation import NumField, StrField
 
 
 class _CountingValidator:
@@ -534,3 +537,150 @@ def test_assemble_dto_validators_rejects_mismatched_list_item_type() -> None:
 
     with pytest.raises(RouteTreeError, match="does not match its type"):
         assemble_dto_validators(_Dto)
+
+
+class _Color(StrEnum):
+    RED = "red"
+    BLUE = "blue"
+
+
+class _Level(IntEnum):
+    LOW = 1
+    HIGH = 2
+
+
+def test_validate_dto_type_accepts_enum_in_every_location() -> None:
+    class _WithEnums(NamedTuple):
+        color: _Color
+        level: Query[_Level]
+        colors: Query[list[_Color]]
+        body_color: Body[_Color] | None
+
+    validate_dto_type(_WithEnums)
+
+
+def test_validate_dto_type_rejects_enum_with_mixed_values() -> None:
+    class _Mixed(Enum):
+        A = "a"
+        B = 1
+
+    class _Dto(NamedTuple):
+        value: Body[_Mixed]
+
+    with pytest.raises(RouteTreeError, match="all str or all int"):
+        validate_dto_type(_Dto)
+
+
+def test_validate_dto_type_rejects_enum_with_bool_values() -> None:
+    class _Flags(Enum):
+        ON = True
+
+    class _Dto(NamedTuple):
+        value: Query[_Flags]
+
+    with pytest.raises(RouteTreeError, match="all str or all int"):
+        validate_dto_type(_Dto)
+
+
+def test_validate_output_dto_type_rejects_enum_with_mixed_values() -> None:
+    class _Mixed(Enum):
+        A = "a"
+        B = 1
+
+    class _Out(NamedTuple):
+        value: _Mixed
+
+    with pytest.raises(RouteTreeError, match="all str or all int"):
+        validate_output_dto_type(_Out)
+
+
+class _OptionalOutside(NamedTuple):
+    value: Query[str] | None
+
+
+class _OptionalInside(NamedTuple):
+    value: Query[str | None]
+
+
+class _AnnotatedOptionalOutside(NamedTuple):
+    value: Annotated[Query[str] | None, StrField(min_len=1)]
+
+
+class _AnnotatedOptionalInside(NamedTuple):
+    value: Annotated[Query[str | None], StrField(min_len=1)]
+
+
+@pytest.mark.parametrize(
+    "dto",
+    [
+        _OptionalOutside,
+        _OptionalInside,
+        _AnnotatedOptionalOutside,
+        _AnnotatedOptionalInside,
+    ],
+)
+def test_resolve_dto_fields_unwraps_optional_at_any_depth(dto: type) -> None:
+    (field,) = resolve_dto_fields(dto)
+
+    assert field.optional is True
+    assert field.target is str
+    assert field.source is FieldSource.QUERY
+
+
+def test_resolve_dto_fields_rejects_two_location_markers() -> None:
+    class _Dto(NamedTuple):
+        value: Annotated[Body[str], QueryMarker()]
+
+    with pytest.raises(RouteTreeError, match="several location markers"):
+        resolve_dto_fields(_Dto)
+
+
+def test_assemble_dto_validators_accepts_valid_doc_examples() -> None:
+    class _Dto(NamedTuple):
+        name: Annotated[
+            Body[str],
+            StrField(max_len=5),
+            DocField(examples={"a": "abc", "b": "abcde"}),
+        ]
+
+    assemble_dto_validators(_Dto)
+
+
+def test_assemble_dto_validators_rejects_example_its_validator_rejects() -> (
+    None
+):
+    class _Dto(NamedTuple):
+        name: Annotated[
+            Body[str],
+            StrField(pattern=r"^[a-z]+$"),
+            DocField(example="Alex!"),
+        ]
+
+    with pytest.raises(RouteTreeError, match="documents example 'Alex!'"):
+        assemble_dto_validators(_Dto)
+
+
+def test_assemble_dto_validators_checks_nested_doc_examples() -> None:
+    class _Inner(NamedTuple):
+        age: Annotated[int, NumField[int](min=18), DocField(example=3)]
+
+    class _Outer(NamedTuple):
+        inner: Body[_Inner]
+
+    with pytest.raises(RouteTreeError, match="documents example 3"):
+        assemble_dto_validators(_Outer)
+
+
+def test_assemble_dto_validators_runs_doc_field_assembly() -> None:
+    class _Dto(NamedTuple):
+        name: Annotated[Body[str], DocField(example="a", examples={"b": "b"})]
+
+    with pytest.raises(DocError, match="mutually exclusive"):
+        assemble_dto_validators(_Dto)
+
+
+def test_validate_dto_type_leaves_non_class_targets_unchecked() -> None:
+    class _Dto(NamedTuple):
+        value: Body[int | str]
+
+    validate_dto_type(_Dto)

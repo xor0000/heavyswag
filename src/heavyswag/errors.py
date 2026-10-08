@@ -17,3 +17,8 @@ class SerializationError(HeavySwagError):
 class ValidationError(HeavySwagError):
     """A field's value or a field validator's own rules broke a
     `heavyswag.validation` constraint (e.g. `StrField`)."""
+
+
+class DocError(HeavySwagError):
+    """The `heavyswag.doc` annotations are inconsistent with each
+    other or with the app they describe."""

@@ -116,8 +116,10 @@ async def get_user(request: Request, dto: UserIdDTO) -> str: ...
 # -> GET /users/{user_id}
 ```
 
-A router prefix must start with `/` and contain only ASCII letters (no
-digits, dashes or extra `/` — one path segment per router).
+A router prefix must start with `/`, must not end with one, and may span
+several segments (`/api/v1`) built from ASCII letters, digits and `-`, `_`,
+`.`, `~`. A `{name}` segment is the one thing it may not contain — path
+parameters belong on the route path.
 
 ## Request data
 
@@ -194,6 +196,49 @@ async def create_user(request: Request, dto: CreateUser) -> Response[str]:
     response.attach_header("X-Resource", "user")
     return response
 ```
+
+### Content-Type
+
+You don't set `Content-Type` yourself for the usual cases — HeavySwag picks
+it from how the body is actually encoded, so the header always matches what
+goes over the wire:
+
+| The controller returns                                        | `Content-Type`              | Body               |
+| ------------------------------------------------------------- | --------------------------- | ------------------ |
+| `str`                                                         | `text/plain; charset=utf-8` | the string as-is   |
+| `bytes`                                                       | `application/octet-stream`  | the bytes as-is    |
+| anything else — a `NamedTuple`, `list[...]`, `int`, `bool`, … | `application/json`          | serialized to JSON |
+
+Two exceptions:
+
+- **you set it yourself** — an explicit `Content-Type` header (matched
+  case-insensitively) is never overwritten. That's how you send HTML, XML,
+  CSV, an image, or anything else the table doesn't cover;
+- **there's no body** — an empty body, or a `204` / `304` response, gets no
+  `Content-Type` at all.
+
+```python
+@router.get("/page")
+async def page(request: Request, dto: Empty) -> Response[str]:
+    response: Response[str] = Response()
+    response.set_body("<h1>Hello</h1>")
+    response.attach_header("Content-Type", "text/html; charset=utf-8")  # (1)!
+    return response
+```
+
+1.  Without this line the very same body would go out as `text/plain` — the
+    browser would show the markup instead of rendering it.
+
+!!! note "Why JSON isn't limited to `NamedTuple`s"
+    A `list[User]` or a bare `42` is serialized with `json.dumps` just like a
+    `NamedTuple` is, so it *is* JSON — labelling it `text/plain` would make
+    clients (and the generated API docs) treat valid JSON as an opaque
+    string. And `bytes` can be anything — an image, a PDF — so
+    `application/octet-stream` ("binary, type unknown") is the only honest
+    default; set the real type explicitly when you know it.
+
+The OpenAPI generator documents responses by the very same rule, so the
+docs and the real responses never disagree.
 
 ## A typical CRUD
 
@@ -369,6 +414,100 @@ async def broken_widget(request: Request, dto: Empty) -> str:
 The lookup walks the exception's MRO, so registering a base class also
 covers every subclass you didn't map explicitly — you don't need an entry
 for every single exception type, just the ones whose status code matters.
+
+The response body is the mapped message as plain text:
+
+```shell
+$ curl -i http://127.0.0.1:8000/widgets/broken
+HTTP/1.1 409 Conflict
+content-type: text/plain; charset=utf-8
+
+Out of Stock
+```
+
+### A JSON error body
+
+To send every error as one JSON shape instead, give `ErrorHandler` a
+`body` factory. It's called with the exception, the mapped status code and
+the mapped message, and returns the `NamedTuple` to send:
+
+```python
+from typing import NamedTuple
+
+from heavyswag.middlewares import ErrorHandler
+
+
+class UsernameTakenError(Exception):
+    pass
+
+
+class UnauthorizedError(Exception):
+    pass
+
+
+class ErrorDTO(NamedTuple):
+    code: str
+    message: str
+
+
+def error_body(exc: Exception, status_code: int, message: str) -> ErrorDTO:  # (1)!
+    return ErrorDTO(code=type(exc).__name__, message=message)
+
+
+app = HeavySwag(
+    main_router=main_router,
+    err_handler=ErrorHandler(
+        {
+            UsernameTakenError: (409, "Username already taken"),
+            UnauthorizedError: (401, "Unauthorized"),
+        },
+        body=error_body,
+    ),
+)
+```
+
+1.  The return annotation is required — a factory without one (a
+    `lambda`, say) is rejected when `ErrorHandler` is created. It's also
+    the schema the [API documentation](7_documentation.md#errors-come-from-the-errorhandler)
+    shows for every error response.
+
+Raise the exception anywhere in a controller — no `Response` to build:
+
+```python
+@router.post("/users")
+async def create_user(request: Request, dto: CreateUser) -> UserOut:
+    if username_exists(dto.username):
+        raise UsernameTakenError
+    ...
+```
+
+```shell
+$ curl -i -X POST http://127.0.0.1:8000/users -H "Content-Type: application/json" \
+    -d '{"username": "alex", ...}'
+HTTP/1.1 409 Conflict
+content-type: application/json
+
+{"code": "UsernameTakenError", "message": "Username already taken"}
+```
+
+The factory covers *every* error, the built-in ones included — a malformed
+request comes back as
+`{"code": "SerializationError", "message": "Bad Request"}` with a `400`, an
+unmapped exception as `{"code": "...", "message": "Internal Server Error"}`
+with a `500`. So the client always gets the same shape.
+
+!!! note "The message comes from the mapping, not the exception"
+    `raise UsernameTakenError("alex is taken")` still sends
+    `"Username already taken"` — the text you pass to the exception is never
+    shown to the client, so it's safe to put internal details there for
+    your logs. If the client should see per-request details, read them off
+    `exc` in the factory:
+
+    ```python
+    def error_body(exc: Exception, status_code: int, message: str) -> ErrorDTO:
+        detail = str(exc) if isinstance(exc, UsernameTakenError) else message
+        return ErrorDTO(code=type(exc).__name__, message=detail)
+    ```
 
 ## Middlewares
 
