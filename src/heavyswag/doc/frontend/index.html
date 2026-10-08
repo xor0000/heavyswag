@@ -27,6 +27,12 @@
     <kbd>/</kbd>
   </div>
 
+  <div class="topbar-server">
+    <span class="topbar-label">Сервер</span>
+    <select class="select" id="serverSelect" title="Куда «Попробовать» отправляет запросы"></select>
+    <button class="icon-btn hidden" id="serverEditBtn"></button>
+  </div>
+
   <div class="topbar-right">
     <button class="pill-btn auth-btn hidden" id="authBtn" title="Авторизация по securitySchemes"></button>
     <button class="icon-btn" id="globalSettingsBtn" title="Глобальные заголовки / куки"></button>
@@ -74,6 +80,21 @@
     <div class="modal-foot">
       <button class="pill-btn" id="authLogoutAllBtn">Сбросить всё</button>
       <button class="exec-btn" id="authSaveBtn">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SERVER MODAL ============ -->
+<div class="modal-backdrop" id="serverModalBackdrop">
+  <div class="modal modal-sm" role="dialog" aria-label="Сервер">
+    <div class="modal-head">
+      <h3 id="serverModalTitle">Свой адрес сервера</h3>
+      <button class="icon-btn" id="serverCloseBtn" title="Закрыть"></button>
+    </div>
+    <div class="modal-body" id="serverModalBody"></div>
+    <div class="modal-foot">
+      <button class="pill-btn" id="serverCancelBtn">Отмена</button>
+      <button class="exec-btn" id="serverSaveBtn">Сохранить</button>
     </div>
   </div>
 </div>

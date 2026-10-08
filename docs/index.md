@@ -415,6 +415,100 @@ The lookup walks the exception's MRO, so registering a base class also
 covers every subclass you didn't map explicitly — you don't need an entry
 for every single exception type, just the ones whose status code matters.
 
+The response body is the mapped message as plain text:
+
+```shell
+$ curl -i http://127.0.0.1:8000/widgets/broken
+HTTP/1.1 409 Conflict
+content-type: text/plain; charset=utf-8
+
+Out of Stock
+```
+
+### A JSON error body
+
+To send every error as one JSON shape instead, give `ErrorHandler` a
+`body` factory. It's called with the exception, the mapped status code and
+the mapped message, and returns the `NamedTuple` to send:
+
+```python
+from typing import NamedTuple
+
+from heavyswag.middlewares import ErrorHandler
+
+
+class UsernameTakenError(Exception):
+    pass
+
+
+class UnauthorizedError(Exception):
+    pass
+
+
+class ErrorDTO(NamedTuple):
+    code: str
+    message: str
+
+
+def error_body(exc: Exception, status_code: int, message: str) -> ErrorDTO:  # (1)!
+    return ErrorDTO(code=type(exc).__name__, message=message)
+
+
+app = HeavySwag(
+    main_router=main_router,
+    err_handler=ErrorHandler(
+        {
+            UsernameTakenError: (409, "Username already taken"),
+            UnauthorizedError: (401, "Unauthorized"),
+        },
+        body=error_body,
+    ),
+)
+```
+
+1.  The return annotation is required — a factory without one (a
+    `lambda`, say) is rejected when `ErrorHandler` is created. It's also
+    the schema the [API documentation](7_documentation.md#errors-come-from-the-errorhandler)
+    shows for every error response.
+
+Raise the exception anywhere in a controller — no `Response` to build:
+
+```python
+@router.post("/users")
+async def create_user(request: Request, dto: CreateUser) -> UserOut:
+    if username_exists(dto.username):
+        raise UsernameTakenError
+    ...
+```
+
+```shell
+$ curl -i -X POST http://127.0.0.1:8000/users -H "Content-Type: application/json" \
+    -d '{"username": "alex", ...}'
+HTTP/1.1 409 Conflict
+content-type: application/json
+
+{"code": "UsernameTakenError", "message": "Username already taken"}
+```
+
+The factory covers *every* error, the built-in ones included — a malformed
+request comes back as
+`{"code": "SerializationError", "message": "Bad Request"}` with a `400`, an
+unmapped exception as `{"code": "...", "message": "Internal Server Error"}`
+with a `500`. So the client always gets the same shape.
+
+!!! note "The message comes from the mapping, not the exception"
+    `raise UsernameTakenError("alex is taken")` still sends
+    `"Username already taken"` — the text you pass to the exception is never
+    shown to the client, so it's safe to put internal details there for
+    your logs. If the client should see per-request details, read them off
+    `exc` in the factory:
+
+    ```python
+    def error_body(exc: Exception, status_code: int, message: str) -> ErrorDTO:
+        detail = str(exc) if isinstance(exc, UsernameTakenError) else message
+        return ErrorDTO(code=type(exc).__name__, message=detail)
+    ```
+
 ## Middlewares
 
 A middleware is anything shaped like:

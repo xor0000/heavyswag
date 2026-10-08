@@ -132,12 +132,6 @@ function requiresAuth(requirements) {
   return requirements.length > 0 && !requirements.some((alt) => Object.keys(alt).length === 0);
 }
 
-function effectiveServers(spec, entry) {
-  const candidates = [entry.op.servers, entry.item.servers, spec.servers];
-  const servers = candidates.find((list) => Array.isArray(list) && list.length);
-  return servers || [{ url: "/" }];
-}
-
 function serverUrl(server, values) {
   return String(server.url).replace(/\{([^}]+)\}/g, (match, name) => {
     const variable = (server.variables || {})[name];

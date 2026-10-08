@@ -52,6 +52,10 @@ input, select, textarea { font-family: inherit; }
   border: 1px solid var(--border); border-radius: 4px; padding: 0 5px;
 }
 
+.topbar-server { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.topbar-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-faint); }
+.topbar-server select { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 
 .select, .icon-btn, .pill-btn {
@@ -197,8 +201,32 @@ textarea.json-editor {
 textarea.json-editor.invalid { border-color: var(--danger); }
 
 .headers-preview { border: 1px dashed var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: var(--text-dim); }
-.headers-preview .row { display: flex; gap: 8px; font-family: var(--mono); padding: 2px 0; flex-wrap: wrap; word-break: break-all; }
-.headers-preview .row b { color: var(--text); font-weight: 600; }
+.headers-preview .row { display: flex; align-items: center; gap: 4px; font-family: var(--mono); padding: 1px 0; white-space: nowrap; min-width: 0; overflow: hidden; }
+.headers-preview .src-tag { flex: none; margin-left: 4px; }
+.kv-copy { cursor: copy; border-radius: 4px; padding: 1px 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background .15s, color .15s, box-shadow .15s; }
+.kv-copy:hover { background: var(--bg-elevated); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
+/* The name never gives way to a long value: it always shows in full up
+ * to 35 characters (`ch` is one character of the monospace font, plus
+ * the 4px padding on each side) — only the value shrinks. */
+.kv-key { flex: 0 0 auto; max-width: calc(35ch + 8px); color: var(--text); font-weight: 600; }
+.kv-val { flex: 0 1 auto; }
+.kv-val.unset { color: var(--text-faint); padding: 1px 4px; }
+.kv-sep { flex: none; color: var(--text-faint); margin: 0 -3px; }
+.kv-copy.copied { animation: copied-flash .9s ease-out; }
+@keyframes copied-flash {
+  0%, 35% { background: var(--success-bg); color: var(--success); box-shadow: inset 0 0 0 1px var(--success); }
+  100% { background: transparent; box-shadow: inset 0 0 0 1px transparent; }
+}
+.copy-tip { position: fixed; z-index: 95; transform: translate(-50%, -110%); padding: 2px 8px; border-radius: 6px; background: var(--success); color: #fff; font: 600 11px var(--sans); pointer-events: none; animation: copy-tip .9s ease-out forwards; }
+@keyframes copy-tip {
+  0% { opacity: 0; transform: translate(-50%, -60%); }
+  20%, 70% { opacity: 1; transform: translate(-50%, -115%); }
+  100% { opacity: 0; transform: translate(-50%, -170%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kv-copy.copied, .copy-tip { animation-duration: .01s; }
+}
+.sub-hint { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text-faint); }
 .src-tag { font-size: 10px; border: 1px solid var(--accent); color: var(--accent); border-radius: 4px; padding: 0 4px; font-family: var(--sans); }
 .src-tag.auth { color: var(--success); border-color: var(--success); }
 .src-tag.warn { color: var(--warning); border-color: var(--warning); }
@@ -214,8 +242,16 @@ textarea.json-editor.invalid { border-color: var(--danger); }
 .exec-hint.ok { color: var(--success); }
 
 .code-box { position: relative; margin-top: 12px; }
-.code-box pre { background: var(--code-bg); color: var(--code-text); padding: 14px; border-radius: 8px; font-size: 12px; overflow-x: auto; margin: 0; white-space: pre-wrap; word-break: break-all; }
-.copy-btn { position: absolute; top: 8px; right: 8px; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-dim); border-radius: 6px; padding: 5px 8px; font-size: 11px; display: flex; gap: 4px; align-items: center; }
+.code-box pre { background: var(--code-bg); color: var(--code-text); padding: 14px; border-radius: 8px; font-size: 12px; line-height: 1.5; overflow-x: auto; margin: 0; white-space: pre-wrap; word-break: break-all; }
+/* Collapsed: 10 lines of 1.5em plus the 14px padding top and bottom,
+ * the last ones fading into the background. */
+.curl-clip { position: relative; }
+.curl-clip.collapsed pre { max-height: calc(10 * 1.5em + 28px); overflow: hidden; }
+.curl-clip.collapsed::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 56px; border-radius: 0 0 8px 8px; background: linear-gradient(to bottom, transparent, var(--code-bg)); pointer-events: none; }
+#curlToggleBtn { margin-top: 6px; }
+/* Above the curl block — `.curl-clip` is positioned and comes later, so
+ * it would otherwise paint over the button. */
+.copy-btn { position: absolute; z-index: 2; top: 8px; right: 8px; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-dim); border-radius: 6px; padding: 5px 8px; font-size: 11px; display: flex; gap: 4px; align-items: center; }
 .copy-btn:hover { color: var(--text); }
 
 .response-panel { margin-top: 14px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
@@ -309,6 +345,7 @@ details.sch-nested > .sch-children { margin: 6px 0 0 6px; padding-left: 12px; bo
 .modal-backdrop { position: fixed; inset: 0; background: var(--overlay); z-index: 70; display: none; align-items: center; justify-content: center; padding: 20px; }
 .modal-backdrop.open { display: flex; }
 .modal { width: 600px; max-width: 100%; max-height: 85vh; display: flex; flex-direction: column; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
+.modal.modal-sm { width: 460px; }
 .modal-head { padding: 18px 22px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .modal-head h3 { margin: 0; font-size: 15px; }
 .modal-body { padding: 18px 22px; overflow-y: auto; }
@@ -334,6 +371,7 @@ details.sch-nested > .sch-children { margin: 6px 0 0 6px; padding-left: 12px; bo
   :root { --sidebar-w: 0px; }
   .sidebar { display: none; }
   .brand { min-width: 0; }
-  .brand-tag, .topbar-search kbd { display: none; }
+  .brand-tag, .topbar-search kbd, .topbar-label { display: none; }
+  .topbar-server select { max-width: 140px; }
   .main { padding: 20px 16px 60px; }
 }

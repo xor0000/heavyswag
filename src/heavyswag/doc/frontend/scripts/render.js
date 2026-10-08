@@ -230,14 +230,11 @@ function paramExampleText(spec, param) {
 }
 
 function initialDraft(spec, entry) {
-  const draft = { params: {}, form: {}, media: "", bodyMode: "json", bodyText: "", serverIndex: 0, serverVars: {}, customUrl: "" };
+  const draft = { params: {}, form: {}, media: "", bodyMode: "json", bodyText: "" };
   for (const param of entry.params) {
     // Required values are filled in; optional ones only hint.
     draft.params[paramKey(param)] = param.required || param.in === "path" ? paramExampleText(spec, param) : "";
   }
-  const servers = effectiveServers(spec, entry);
-  for (const [name, variable] of Object.entries(servers[0].variables || {})) draft.serverVars[name] = variable.default;
-
   const body = requestBodyOf(spec, entry);
   if (body) {
     const medias = Object.keys(body.content);
@@ -299,7 +296,6 @@ function renderOperationPage(api, entry) {
       : `<div class="callout info">${ICONS.unlock}<div><b>Авторизация подставляется</b>${escapeHtml(auth.used.join(" + "))}</div></div>`;
   }
 
-  if (interactive) html += serverSectionHtml(spec, entry, draft);
   html += paramsSectionHtml(spec, entry, draft, interactive);
   html += bodySectionHtml(ctx, interactive);
   if (interactive) html += tryItSectionHtml();
@@ -311,31 +307,6 @@ function renderOperationPage(api, entry) {
   bindNavLinks();
   bindDocWidgets(main);
   if (interactive) bindTryIt(ctx);
-}
-
-/* ---------- server ---------- */
-
-function serverSectionHtml(spec, entry, draft) {
-  const servers = effectiveServers(spec, entry);
-  const options = servers.map((server, index) => (
-    `<option value="${index}" ${draft.serverIndex === index ? "selected" : ""}>${escapeHtml(server.url)}${server.description ? ` — ${escapeHtml(server.description)}` : ""}</option>`
-  )).join("") + `<option value="-1" ${draft.serverIndex === -1 ? "selected" : ""}>Свой адрес…</option>`;
-  const current = servers[draft.serverIndex];
-  const variables = current ? Object.entries(current.variables || {}).map(([name, variable]) => {
-    const value = draft.serverVars[name] ?? variable.default;
-    const input = Array.isArray(variable.enum)
-      ? `<select class="field-input" data-server-var="${escapeHtml(name)}">${variable.enum.map((option) => `<option ${String(option) === String(value) ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>`
-      : `<input class="field-input" type="text" data-server-var="${escapeHtml(name)}" value="${escapeHtml(value)}">`;
-    return `<label title="${escapeHtml(variable.description || "")}">{${escapeHtml(name)}}</label>${input}`;
-  }).join("") : "";
-
-  return `<div class="section"><h2>Сервер</h2>
-    <div class="inline-row">
-      <select class="field-input" id="serverSelect">${options}</select>
-      ${draft.serverIndex === -1 ? `<input class="field-input" type="text" id="customUrlInput" placeholder="http://localhost:8000" value="${escapeHtml(draft.customUrl)}">` : ""}
-    </div>
-    ${variables ? `<div class="inline-row">${variables}</div>` : ""}
-  </div>`;
 }
 
 /* ---------- parameters ---------- */
@@ -497,14 +468,17 @@ function encodingHtml(mediaObj) {
 
 function tryItSectionHtml() {
   return `<div class="section"><h2>Попробовать</h2>
-    <div class="sub-title">Заголовки и куки запроса</div>
+    <div class="sub-title">Заголовки и куки запроса <span class="sub-hint">нажмите на имя или значение, чтобы скопировать</span></div>
     <div class="headers-preview" id="headersPreview"></div>
-    <button class="link-btn" id="openGlobalFromDetail">Изменить глобальные headers / cookies →</button>
     <div class="exec-row">
       <button class="exec-btn" id="executeBtn">▶ Отправить</button>
       <span class="exec-hint" id="execHint"></span>
     </div>
-    <div class="code-box"><button class="copy-btn" id="copyCurlBtn">${ICONS.copy} copy</button><pre id="curlPreview"></pre></div>
+    <div class="code-box">
+      <button class="copy-btn" id="copyCurlBtn">${ICONS.copy} copy</button>
+      <div class="curl-clip" id="curlClip"><pre id="curlPreview"></pre></div>
+      <button class="link-btn hidden" id="curlToggleBtn"></button>
+    </div>
     <div class="response-panel" id="responsePanel"><div class="rp-placeholder">Нажмите «Отправить», чтобы выполнить запрос</div></div>
   </div>`;
 }
@@ -544,24 +518,11 @@ function bindTryIt(ctx) {
   if (resetBody) resetBody.addEventListener("click", () => { resetBodyDraft(spec, entry, draft, draft.media, exampleSelect ? Number(exampleSelect.value) : 0); renderMain(); });
   main.querySelectorAll("[data-body-mode]").forEach((button) => button.addEventListener("click", () => switchBodyMode(ctx, button.dataset.bodyMode)));
 
-  const serverSelect = byId("serverSelect");
-  serverSelect.addEventListener("change", () => {
-    draft.serverIndex = Number(serverSelect.value);
-    const server = effectiveServers(spec, entry)[draft.serverIndex];
-    draft.serverVars = {};
-    for (const [name, variable] of Object.entries((server && server.variables) || {})) draft.serverVars[name] = variable.default;
-    renderMain();
-  });
-  const customUrl = byId("customUrlInput");
-  if (customUrl) customUrl.addEventListener("input", () => { draft.customUrl = customUrl.value.trim(); refresh(); });
-  main.querySelectorAll("[data-server-var]").forEach((input) => {
-    const update = () => { draft.serverVars[input.dataset.serverVar] = input.value; refresh(); };
-    input.addEventListener("input", update);
-    input.addEventListener("change", update);
-  });
-
-  byId("openGlobalFromDetail").addEventListener("click", openDrawer);
   byId("copyCurlBtn").addEventListener("click", () => copyText(byId("curlPreview").textContent, "curl скопирован"));
+  byId("curlToggleBtn").addEventListener("click", () => {
+    state.curlExpanded = state.curlExpanded === ctx.draftKey ? null : ctx.draftKey;
+    renderCurl(ctx, byId("curlPreview").textContent);
+  });
   byId("executeBtn").addEventListener("click", () => {
     if (refreshTryIt(ctx)) executeRequest(ctx, byId("responsePanel"));
   });
@@ -648,9 +609,12 @@ function validateDraft(ctx) {
     }
   }
 
-  const url = draftBaseUrl(ctx);
-  if (draft.serverIndex === -1 && !draft.customUrl) blocking.push("Укажите адрес сервера");
-  else if (!absoluteUrl(url || "/")) blocking.push("Сервер задан относительным адресом, а страница открыта как файл — выберите «Свой адрес…»");
+  const target = requestBase(spec, entry);
+  if (!target.url && state.server.index === CUSTOM_SERVER) {
+    blocking.push("Укажите свой адрес в меню «Сервер» вверху");
+  } else if (!absoluteUrl(target.url || "/")) {
+    blocking.push("Сервер задан относительным адресом, а страница открыта как файл — выберите «Свой адрес…» в меню «Сервер» вверху");
+  }
   return { errors, blocking };
 }
 
@@ -672,7 +636,7 @@ function refreshTryIt(ctx) {
 
   const req = buildRequest(ctx);
   renderHeadersPreview(req);
-  byId("curlPreview").textContent = buildCurl(req);
+  renderCurl(ctx, buildCurl(req));
 
   const ok = !errors.size && !blocking.length;
   const hint = byId("execHint");
@@ -683,18 +647,58 @@ function refreshTryIt(ctx) {
   return ok;
 }
 
+/* One line per header / cookie, long values cut with an ellipsis. The
+ * name and the value each copy on click; a secret stays masked on
+ * screen but copies whole — `copies` holds the real text behind every
+ * copyable piece. */
 function renderHeadersPreview(req) {
   const tagFor = { global: '<span class="src-tag">GLOBAL</span>', auth: '<span class="src-tag auth">AUTH</span>', auto: '<span class="src-tag">AUTO</span>', param: "" };
-  const rows = req.headers.map(([key, value, source]) => (
-    `<div class="row"><b>${escapeHtml(key)}:</b> ${escapeHtml(source === "auth" ? maskSecret(value) : value)} ${tagFor[source] || ""}</div>`
-  ));
-  if (req.cookies.length) {
-    rows.push(`<div class="row"><b>Cookie:</b> ${escapeHtml(req.cookies.map(([k, v]) => `${k}=${v}`).join("; "))} <span class="src-tag warn">только curl</span></div>`);
+  const copies = [];
+  const piece = (cls, shown, real) => {
+    copies.push(real);
+    return `<span class="kv-copy ${cls}" data-copy-index="${copies.length - 1}" title="${escapeHtml(shown)}">${escapeHtml(shown)}</span>`;
+  };
+  const row = (key, value, source, tags) => (
+    `<div class="row">${piece("kv-key", key, key)}<span class="kv-sep">:</span>${piece("kv-val", source === "auth" ? maskSecret(value) : value, value)}${tags}</div>`
+  );
+
+  const rows = req.headers.map(([key, value, source]) => row(key, value, source, tagFor[source] || ""));
+  for (const [key, value, source] of req.cookies) {
+    rows.push(row(key, value, source, '<span class="src-tag">COOKIE</span><span class="src-tag warn">только curl</span>'));
   }
   for (const name of req.auth.missing) {
-    rows.push(`<div class="row"><b>${escapeHtml(name)}:</b> не задано <span class="src-tag warn">AUTH</span></div>`);
+    rows.push(`<div class="row">${piece("kv-key", name, name)}<span class="kv-sep">:</span><span class="kv-val unset">не задано</span><span class="src-tag warn">AUTH</span></div>`);
   }
-  byId("headersPreview").innerHTML = rows.join("") || '<div class="faint">Нет заголовков</div>';
+
+  const box = byId("headersPreview");
+  box.innerHTML = rows.join("") || '<div class="faint">Нет заголовков</div>';
+  box.querySelectorAll("[data-copy-index]").forEach((element) => element.addEventListener("click", () => {
+    copyWithFlash(element, copies[Number(element.dataset.copyIndex)]);
+  }));
+}
+
+const CURL_MAX_LINES = 10;
+
+/* A curl longer than `CURL_MAX_LINES` lines on screen — wrapped lines
+ * count, it's the height that matters — starts collapsed to that many.
+ * Expanding sticks while the user stays on this route, through every
+ * re-render as they type; another route starts collapsed again. */
+function renderCurl(ctx, text) {
+  const pre = byId("curlPreview");
+  const clip = byId("curlClip");
+  const toggle = byId("curlToggleBtn");
+  pre.textContent = text;
+
+  clip.classList.remove("collapsed");
+  const style = getComputedStyle(pre);
+  const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  const lines = Math.round((pre.scrollHeight - padding) / parseFloat(style.lineHeight));
+  const long = lines > CURL_MAX_LINES;
+  const expanded = state.curlExpanded === ctx.draftKey;
+
+  clip.classList.toggle("collapsed", long && !expanded);
+  toggle.classList.toggle("hidden", !long);
+  toggle.textContent = expanded ? "Свернуть" : `Показать полностью · ${lines} ${pluralRu(lines, "строка", "строки", "строк")}`;
 }
 
 function maskSecret(value) {

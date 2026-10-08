@@ -16,6 +16,7 @@ const ICONS = {
   key: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2"></path><circle cx="9" cy="15" r="5"></circle><path d="M12.5 11.5L19 5l3 3-2 2-2-2-2 2z"></path></svg>',
   close: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>',
   external: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>',
+  edit: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>',
   home: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>',
 };
 
@@ -56,10 +57,48 @@ function saveJson(storage, key, value) {
   }
 }
 
+/* `navigator.clipboard` only exists in a secure context (https,
+ * localhost) — on plain http fall back to the selection-based copy. */
+function writeClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+  return new Promise((resolve, reject) => {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const copied = document.execCommand("copy");
+    area.remove();
+    if (copied) resolve();
+    else reject(new Error("copy failed"));
+  });
+}
+
 function copyText(text, okMessage) {
-  navigator.clipboard.writeText(text)
+  writeClipboard(text)
     .then(() => showToast(okMessage))
     .catch(() => showToast("Не удалось скопировать: нет доступа к буферу обмена"));
+}
+
+/* Copy, and confirm right where the click was: the element flashes and
+ * a small "Скопировано" floats up from it and fades. */
+function copyWithFlash(element, text) {
+  writeClipboard(text).then(() => {
+    element.classList.remove("copied");
+    void element.offsetWidth; // restart the animation on a repeated click
+    element.classList.add("copied");
+
+    const rect = element.getBoundingClientRect();
+    const tip = document.createElement("div");
+    tip.className = "copy-tip";
+    tip.textContent = "Скопировано";
+    tip.style.left = `${rect.left + rect.width / 2}px`;
+    tip.style.top = `${rect.top}px`;
+    document.body.appendChild(tip);
+    setTimeout(() => tip.remove(), 900);
+  }).catch(() => showToast("Не удалось скопировать: нет доступа к буферу обмена"));
 }
 
 function downloadBlob(blob, filename) {
@@ -131,6 +170,16 @@ function base64Utf8(text) {
   let binary = "";
   bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
   return btoa(binary);
+}
+
+/* `1 строка`, `3 строки`, `11 строк`. */
+function pluralRu(count, one, few, many) {
+  const tens = count % 100;
+  const units = count % 10;
+  if (tens >= 11 && tens <= 14) return many;
+  if (units === 1) return one;
+  if (units >= 2 && units <= 4) return few;
+  return many;
 }
 
 function formatBytes(size) {

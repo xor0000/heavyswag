@@ -16,6 +16,7 @@ const state = {
   globals: loadGlobals(),
   auth: {},
   inflight: null,
+  curlExpanded: null,
 };
 
 /* The document plus everything the pages derive from it, parsed once. */
@@ -93,6 +94,7 @@ function initTopbar() {
     if (event.key === "Escape") {
       closeDrawer();
       closeAuthModal();
+      if (byId("serverModalBackdrop").classList.contains("open")) closeServerModal();
     }
   });
 }
@@ -102,6 +104,7 @@ function initTopbar() {
 function init() {
   initTheme();
   initAuth();
+  initServerPicker();
   initTopbar();
   initDrawer();
   window.addEventListener("hashchange", applyHash);

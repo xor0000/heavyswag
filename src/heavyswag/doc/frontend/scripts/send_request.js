@@ -136,14 +136,6 @@ function serializeCookie(param, value) {
 
 /* ---------- the request ---------- */
 
-function draftBaseUrl(ctx) {
-  const servers = effectiveServers(ctx.spec, ctx.entry);
-  const draft = ctx.draft;
-  if (draft.serverIndex === -1) return (draft.customUrl || "").replace(/\/+$/, "");
-  const server = servers[draft.serverIndex] || servers[0];
-  return serverUrl(server, draft.serverVars).replace(/\/+$/, "");
-}
-
 /* An absolute URL the browser can actually reach — a relative server
  * (`/`, `/api`) only works when the page itself is served over HTTP. */
 function absoluteUrl(url) {
@@ -203,7 +195,7 @@ function buildRequest(ctx) {
   if (contentType && !hasHeader(req.headers, "Content-Type")) req.headers.push(["Content-Type", contentType, "auto"]);
   if (req.body.kind === "multipart") req.headers.push(["Content-Type", "multipart/form-data; boundary=…", "auto"]);
 
-  const base = draftBaseUrl(ctx);
+  const base = requestBase(spec, entry).url;
   req.url = base + path + (query.length ? "?" + query.join("&") : "");
   return req;
 }

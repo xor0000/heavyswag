@@ -24,6 +24,7 @@ _SCRIPTS = (
     "schema_view.js",
     "change_theme.js",
     "set_barier.js",
+    "server.js",
     "send_request.js",
     "render.js",
     "main.js",

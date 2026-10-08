@@ -382,11 +382,11 @@ app = HeavySwag(
 
 Without `doc=`, the document is titled `HeavySwag API`, version `0.1.0`.
 
-`servers` is optional too. Without it the HTML page's **Попробовать** sends
-requests to the server the page itself came from — exactly right when the
-app serves its own docs (see [below](#serving-the-page-from-your-app)).
-A page opened as a file has no such server: pick «Свой адрес…» there and
-type the API's URL.
+`servers` is optional too. On the HTML page they fill the **Сервер** menu in
+the top bar — where every **Попробовать** request goes. Without any, the
+menu offers «этот сервер»: the server the page itself came from — exactly
+right when the app serves its own docs (see
+[below](#serving-the-page-from-your-app)).
 
 ## OpenAPI 3.1
 
@@ -437,8 +437,14 @@ straight from disk or can be served by a route. In it:
 - parameters, request and response bodies as expandable schema trees, with
   examples;
 - **Попробовать** (try it out): fill in parameters and the body (as JSON or field by
-  field), pick a server, send it for real, see the status, headers, timing
-  and body — and whether the response matches its documented schema;
+  field), send it for real, see the status, headers, timing and body — and
+  whether the response matches its documented schema;
+- a **Сервер** menu in the top bar, shared by every route and remembered
+  between visits: the document's `servers`, or «Свой адрес…» — a dialog
+  where you type any URL (e.g. `http://localhost:8000` for a page opened as
+  a file). A server with variables (`http://localhost:{port}`) gets a ✎
+  button to set them. A route whose spec declares its own `servers` always
+  uses those;
 - an **Authorize** dialog for every security scheme, applied to the
   routes that need it;
 - global headers / cookies sent with every request;
