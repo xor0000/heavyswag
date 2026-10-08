@@ -31,6 +31,7 @@ from heavyswag.doc.models import (
     SecurityScheme,
 )
 from heavyswag.errors import DocError, SerializationError, ValidationError
+from heavyswag.specify.controller import Controller
 from heavyswag.specify.response import Response
 from heavyswag.validation import DateTimeField, NumField, StrField
 from heavyswag.validation.str_validation import _PATTERN_PRESETS
@@ -133,7 +134,9 @@ class _OpenAPIBuilder:
         doc_app = self._app.doc
         if doc_app is not None and doc_app.servers:
             spec["servers"] = [
-                _drop_none({"url": server.url, "description": server.description})
+                _drop_none(
+                    {"url": server.url, "description": server.description}
+                )
                 for server in doc_app.servers
             ]
         if self._tags:
@@ -157,7 +160,9 @@ class _OpenAPIBuilder:
         return spec
 
     def _info(self) -> dict[str, Any]:
-        doc_app = self._app.doc or DocApp(title="HeavySwag API", version="0.1.0")
+        doc_app = self._app.doc or DocApp(
+            title="HeavySwag API", version="0.1.0"
+        )
         info: dict[str, Any] = {
             "title": doc_app.title,
             "version": doc_app.version,
@@ -185,7 +190,9 @@ class _OpenAPIBuilder:
         ]
         tags.extend(doc.tags)
         if tags:
-            operation["tags"] = list(dict.fromkeys(self._tag(tag) for tag in tags))
+            operation["tags"] = list(
+                dict.fromkeys(self._tag(tag) for tag in tags)
+            )
 
         summary, description = _docstring(route.controller, doc)
         if summary is not None:
@@ -228,7 +235,9 @@ class _OpenAPIBuilder:
                 },
             }
 
-        operation["responses"] = self._responses(entry, doc, has_input=bool(fields))
+        operation["responses"] = self._responses(
+            entry, doc, has_input=bool(fields)
+        )
 
         security = self._resolve_security(entry, doc)
         if security is not None:
@@ -314,8 +323,7 @@ class _OpenAPIBuilder:
             raise DocError(msg)
 
         success: dict[str, Any] = {
-            "description": doc.response_description
-            or _phrase(success_status),
+            "description": doc.response_description or _phrase(success_status),
         }
         content = self._content(output_dto_type(route.controller))
         if content is not None:
@@ -353,7 +361,9 @@ class _OpenAPIBuilder:
             grouped.setdefault(status_code, []).append((exc_type, message))
 
         for status_code, errors in sorted(grouped.items()):
-            responses[str(status_code)] = self._error_response(status_code, errors)
+            responses[str(status_code)] = self._error_response(
+                status_code, errors
+            )
 
         return responses
 
@@ -372,7 +382,9 @@ class _OpenAPIBuilder:
 
         examples: dict[str, Any] = {}
         for exc_type, message in errors:
-            example = _error_example(err_handler, exc_type, status_code, message)
+            example = _error_example(
+                err_handler, exc_type, status_code, message
+            )
             if example is not None:
                 examples[exc_type.__name__] = {"value": example}
 
@@ -393,7 +405,11 @@ class _OpenAPIBuilder:
             return {"text/plain": {"schema": {"type": "string"}}}
 
         if target is bytes:
-            return {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}
+            return {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"}
+                }
+            }
 
         return {"application/json": {"schema": self._type_schema(target)}}
 
@@ -413,7 +429,9 @@ class _OpenAPIBuilder:
             "additionalProperties": False,
         }
 
-    def _field_schema(self, field: DTOField, *, with_doc: bool) -> dict[str, Any]:
+    def _field_schema(
+        self, field: DTOField, *, with_doc: bool
+    ) -> dict[str, Any]:
         target = field.target
         is_list = get_origin(target) is list
         item_type = get_args(target)[0] if is_list else target
@@ -446,7 +464,9 @@ class _OpenAPIBuilder:
                     schema["deprecated"] = True
                 examples = doc.doc_examples()
                 if examples:
-                    schema["examples"] = [to_jsonable(value) for value in examples]
+                    schema["examples"] = [
+                        to_jsonable(value) for value in examples
+                    ]
 
         return schema
 
@@ -537,7 +557,9 @@ def _doc_field(field: DTOField) -> DocField | None:
     return None
 
 
-def _docstring(controller: Any, doc: DocController) -> tuple[str | None, str | None]:  # noqa: ANN401
+def _docstring(
+    controller: Controller[Any, Any, Any], doc: DocController
+) -> tuple[str | None, str | None]:
     """`summary` defaults to the docstring's first line and
     `description` to the rest of it — or to all of it, once `summary`
     is given explicitly."""
@@ -628,7 +650,11 @@ def _nullable(schema: dict[str, Any]) -> dict[str, Any]:
 
 def _enum_schema(target: type[Enum]) -> dict[str, Any]:
     values = [member.value for member in target]
-    kind = "string" if all(isinstance(value, str) for value in values) else "integer"
+    kind = (
+        "string"
+        if all(isinstance(value, str) for value in values)
+        else "integer"
+    )
     return {"type": kind, "enum": values}
 
 
@@ -691,7 +717,11 @@ def _error_example(
 
 def _security_scheme(scheme: SecurityScheme) -> dict[str, Any]:
     if isinstance(scheme, HTTPBearer):
-        result = {"type": "http", "scheme": "bearer", "bearerFormat": scheme.bearer_format}
+        result = {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": scheme.bearer_format,
+        }
     elif isinstance(scheme, HTTPBasic):
         result = {"type": "http", "scheme": "basic"}
     elif isinstance(scheme, APIKey):
@@ -702,7 +732,11 @@ def _security_scheme(scheme: SecurityScheme) -> dict[str, Any]:
                 "supported; a query value belongs on the DTO as Query[...]."
             )
             raise DocError(msg)
-        result = {"type": "apiKey", "in": scheme.location, "name": scheme.param_name}
+        result = {
+            "type": "apiKey",
+            "in": scheme.location,
+            "name": scheme.param_name,
+        }
     else:
         msg = f"Unknown security scheme {scheme!r}."
         raise DocError(msg)

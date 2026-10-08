@@ -106,7 +106,9 @@ def test_every_script_is_bundled() -> None:
     assert _SCRIPTS[-1] == "main.js"
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.skipif(
+    shutil.which("node") is None, reason="node is not installed"
+)
 def test_bundle_is_valid_javascript(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle.js"
     bundle.write_text(_bundle_scripts(), encoding="utf-8")

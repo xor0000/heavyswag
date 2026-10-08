@@ -143,3 +143,11 @@ def test_lookup_walks_mro() -> None:
     handler = ErrorHandler()
 
     assert handler.lookup(RouteTreeError) == (500, "Internal Server Error")
+
+
+def test_body_factory_with_unresolvable_annotation_is_rejected() -> None:
+    def body(exc: Exception, status_code: int, message: str) -> "NotDefined":  # type: ignore[name-defined]  # noqa: F821
+        raise NotImplementedError
+
+    with pytest.raises(HeavySwagError, match="must annotate its return type"):
+        ErrorHandler(body=body)

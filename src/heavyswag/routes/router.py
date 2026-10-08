@@ -1,12 +1,11 @@
 import string
-from collections.abc import Awaitable, Callable
-from typing import Any, Concatenate, NamedTuple, Self
+from collections.abc import Callable
+from typing import Any, NamedTuple, Self
 
 from heavyswag.constants import ALLOWED_TYPES, HttpMethod
 from heavyswag.doc.models import DocController, DocRouter
 from heavyswag.errors import IncludedRouterError
-from heavyswag.specify.request import Request
-from heavyswag.specify.response import Response
+from heavyswag.specify.controller import Controller
 
 # What a router prefix segment may be built from. Deliberately wider
 # than a Python identifier — a prefix ends up in a URL, not in code, so
@@ -14,14 +13,6 @@ from heavyswag.specify.response import Response
 # enough to keep a prefix a plain, literal piece of path: no percent
 # escapes to normalize, no `{name}` to resolve (see `_validate_prefix`).
 _PREFIX_CHARS = frozenset(string.ascii_letters + string.digits + "-_.~")
-
-type Controller[
-    InDTO: tuple[ALLOWED_TYPES, ...] | None,
-    OutDTO: ALLOWED_TYPES | tuple[ALLOWED_TYPES, ...] | None,
-    **P,
-] = Callable[
-    Concatenate[Request, InDTO, P], Awaitable[OutDTO | Response[OutDTO]]  # type: ignore[type-var]
-]
 
 
 class Route[

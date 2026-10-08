@@ -1018,7 +1018,9 @@ def test_serialize_dto_coerces_enums_from_every_location() -> None:
         (True, _Level),
     ],
 )
-def test_coerce_enum_rejects_unknown_value(value: object, target: type) -> None:
+def test_coerce_enum_rejects_unknown_value(
+    value: object, target: type
+) -> None:
     serializer = Serializer(b"")
 
     with pytest.raises(SerializationError, match="expected one of"):

@@ -535,16 +535,13 @@ def to_jsonable(value: Any) -> Any:  # noqa: ANN401, PLR0911
 
     if hasattr(value, "_asdict"):
         return {
-            key: to_jsonable(item)
-            for key, item in value._asdict().items()
+            key: to_jsonable(item) for key, item in value._asdict().items()
         }
 
     if isinstance(value, list | tuple | set | frozenset):
         return [to_jsonable(item) for item in value]
 
     if isinstance(value, dict):
-        return {
-            key: to_jsonable(item) for key, item in value.items()
-        }
+        return {key: to_jsonable(item) for key, item in value.items()}
 
     return value

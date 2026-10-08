@@ -594,19 +594,32 @@ def test_validate_output_dto_type_rejects_enum_with_mixed_values() -> None:
         validate_output_dto_type(_Out)
 
 
+class _OptionalOutside(NamedTuple):
+    value: Query[str] | None
+
+
+class _OptionalInside(NamedTuple):
+    value: Query[str | None]
+
+
+class _AnnotatedOptionalOutside(NamedTuple):
+    value: Annotated[Query[str] | None, StrField(min_len=1)]
+
+
+class _AnnotatedOptionalInside(NamedTuple):
+    value: Annotated[Query[str | None], StrField(min_len=1)]
+
+
 @pytest.mark.parametrize(
-    "hint",
+    "dto",
     [
-        Query[str] | None,
-        Query[str | None],
-        Annotated[Query[str] | None, StrField(min_len=1)],
-        Annotated[Query[str | None], StrField(min_len=1)],
+        _OptionalOutside,
+        _OptionalInside,
+        _AnnotatedOptionalOutside,
+        _AnnotatedOptionalInside,
     ],
 )
-def test_resolve_dto_fields_unwraps_optional_at_any_depth(hint: object) -> None:
-    # Functional syntax — the field's annotation is the parameter.
-    dto = NamedTuple("_Dto", [("value", hint)])  # type: ignore[misc]  # noqa: UP014
-
+def test_resolve_dto_fields_unwraps_optional_at_any_depth(dto: type) -> None:
     (field,) = resolve_dto_fields(dto)
 
     assert field.optional is True
@@ -633,7 +646,9 @@ def test_assemble_dto_validators_accepts_valid_doc_examples() -> None:
     assemble_dto_validators(_Dto)
 
 
-def test_assemble_dto_validators_rejects_example_its_validator_rejects() -> None:
+def test_assemble_dto_validators_rejects_example_its_validator_rejects() -> (
+    None
+):
     class _Dto(NamedTuple):
         name: Annotated[
             Body[str],
@@ -662,3 +677,10 @@ def test_assemble_dto_validators_runs_doc_field_assembly() -> None:
 
     with pytest.raises(DocError, match="mutually exclusive"):
         assemble_dto_validators(_Dto)
+
+
+def test_validate_dto_type_leaves_non_class_targets_unchecked() -> None:
+    class _Dto(NamedTuple):
+        value: Body[int | str]
+
+    validate_dto_type(_Dto)

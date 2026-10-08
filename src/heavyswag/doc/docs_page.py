@@ -71,7 +71,9 @@ def _validate_ui(ui: DocUI) -> None:
     for name in ("accent", "accent_soft"):
         color = getattr(ui, name)
         if color is not None and not _HEX_COLOR.match(color):
-            msg = f"DocUI.{name} must be a #rgb or #rrggbb color, got {color!r}."
+            msg = (
+                f"DocUI.{name} must be a #rgb or #rrggbb color, got {color!r}."
+            )
             raise DocError(msg)
 
 

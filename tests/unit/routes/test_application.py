@@ -399,7 +399,9 @@ async def test_http_bare_return_is_200_whatever_the_docs_say() -> None:
 
     await server(
         http_scope(method="POST", path="/"),
-        ReceiveQueue([{"type": "http.request", "body": b"", "more_body": False}]),
+        ReceiveQueue(
+            [{"type": "http.request", "body": b"", "more_body": False}]
+        ),
         send,
     )
 

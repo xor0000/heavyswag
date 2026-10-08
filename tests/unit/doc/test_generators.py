@@ -167,7 +167,9 @@ def test_build_openapi_validates_the_route_tree_first() -> None:
 
 def test_build_openapi_rejects_doc_example_failing_its_validator() -> None:
     class _Dto(NamedTuple):
-        name: Annotated[Body[str], StrField(max_len=2), DocField(example="abc")]
+        name: Annotated[
+            Body[str], StrField(max_len=2), DocField(example="abc")
+        ]
 
     router = HeavyRouter("/")
 
@@ -766,7 +768,11 @@ def test_security_is_inherited_overridden_and_registered() -> None:
     ]
     assert spec["components"]["securitySchemes"] == {
         "basicAuth": {"type": "http", "scheme": "basic"},
-        "bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
+        "bearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+        },
         "key": {"type": "apiKey", "in": "header", "name": "X-Api-Key"},
     }
 
@@ -920,3 +926,98 @@ def test_query_api_key_is_rejected() -> None:
 
     with pytest.raises(DocError, match="only 'header' or 'cookie'"):
         build_openapi(_app(router))
+
+
+# remaining branches
+
+
+def test_named_examples_of_a_query_parameter() -> None:
+    class _Dto(NamedTuple):
+        sort: Annotated[
+            Query[str],
+            DocField(examples={"newest": "-created", "oldest": "created"}),
+        ]
+
+    router = HeavyRouter("/")
+
+    @router.get("/")
+    async def index(_: Request, __: _Dto) -> None:
+        return None
+
+    (param,) = _single_operation(build_openapi(_app(router)))["parameters"]
+
+    assert param["examples"] == {
+        "newest": {"value": "-created"},
+        "oldest": {"value": "created"},
+    }
+    assert "example" not in param
+
+
+def test_deprecated_body_field() -> None:
+    class _Dto(NamedTuple):
+        nickname: Annotated[Body[str], DocField(deprecated=True)]
+
+    router = HeavyRouter("/")
+
+    @router.post("/")
+    async def create(_: Request, __: _Dto) -> None:
+        return None
+
+    body = _single_operation(build_openapi(_app(router)))["requestBody"]
+    schema = body["content"]["application/json"]["schema"]
+
+    assert schema["properties"]["nickname"] == {
+        "type": "string",
+        "deprecated": True,
+    }
+
+
+def test_undocumentable_type_is_rejected() -> None:
+    router = HeavyRouter("/")
+
+    # `dict` isn't one of ALLOWED_TYPES, so the router's own typing refuses
+    # this controller — the generator still has to fail loudly when that
+    # is bypassed, rather than write a broken document.
+    @router.get("/")  # type: ignore[arg-type]
+    async def index(_: Request, __: _Empty) -> dict[str, int]:
+        return {}
+
+    with pytest.raises(DocError, match="Cannot document type"):
+        build_openapi(_app(router))
+
+
+def test_unknown_security_scheme_is_rejected() -> None:
+    class _CustomScheme(NamedTuple):
+        name: str = "custom"
+
+    router = HeavyRouter("/")
+
+    @router.get("/", doc=DocController(security=[_CustomScheme()]))  # type: ignore[list-item]
+    async def index(_: Request, __: _Empty) -> None:
+        return None
+
+    with pytest.raises(DocError, match="Unknown security scheme"):
+        build_openapi(_app(router))
+
+
+def test_status_without_a_standard_phrase() -> None:
+    router = HeavyRouter("/")
+
+    @router.get("/", doc=DocController(success_status_code=599))
+    async def index(_: Request, __: _Empty) -> None:
+        return None
+
+    responses = _single_operation(build_openapi(_app(router)))["responses"]
+
+    assert responses["599"]["description"] == "Status 599"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("text", '"text"\n'), (42, "42\n"), ({}, "{}\n"), ([], "[]\n")],
+)
+def test_to_yaml_top_level_scalar_or_empty_container(
+    value: Any,  # noqa: ANN401
+    expected: str,
+) -> None:
+    assert to_yaml(value) == expected
