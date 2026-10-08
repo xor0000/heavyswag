@@ -1,5 +1,6 @@
 import pytest
 
+from heavyswag.constants import HttpMethod
 from heavyswag.doc import DocController, DocRouter, DocTag
 from heavyswag.errors import IncludedRouterError
 from heavyswag.routes.router import HeavyRouter
@@ -130,11 +131,21 @@ def test_route_without_doc() -> None:
 def test_route_keeps_doc(method: str) -> None:
     router = HeavyRouter("/", doc=DocRouter(tags=[DocTag("Users")]))
     doc = DocController(summary="Create", success_status_code=201)
+    # A dict, not `getattr`: the latter is `Any` to mypy, which would make
+    # the decorator — and so the controller — untyped under `--strict`.
+    register = {
+        "get": router.get,
+        "post": router.post,
+        "put": router.put,
+        "patch": router.patch,
+        "delete": router.delete,
+    }[method]
 
-    @getattr(router, method)("/", doc=doc)
+    @register("/", doc=doc)
     async def controller(_: Request, __: tuple[()]) -> None:
         return None
 
     (route,) = router.routes
+    assert route.method is HttpMethod[method.upper()]
     assert route.doc is doc
     assert router.doc == DocRouter(tags=[DocTag("Users")])
