@@ -62,3 +62,17 @@ def test_request_defaults_to_empty_collections() -> None:
 
     assert req.headers == []
     assert req.cookies == []
+
+
+def test_request_get_specific_header() -> None:
+    req = Request(headers=[("content-type", "application/json")], cookies=[])
+
+    assert req.get_header("content-type") == "application/json"
+    assert req.get_header("accept") is None
+
+
+def test_request_get_specific_cookie() -> None:
+    req = Request(headers=[], cookies=[("some-cookie", "cookie")])
+
+    assert req.get_cookie("some-cookie") == "cookie"
+    assert req.get_cookie("not-some-cookie") is None
