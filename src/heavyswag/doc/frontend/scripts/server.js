@@ -1,8 +1,8 @@
-/* server.js — where "Попробовать" sends requests: picked once, in the top
+/* server.js — where "Try it out" sends requests: picked once, in the top
  * bar, for the whole page, and remembered in `localStorage`.
  *
  * The list is the document's `servers`; without any, the page's own
- * origin ("этот сервер"). "Свой адрес…" and server variables
+ * origin ("this server"). "Custom URL…" and server variables
  * (`{port}`, …) are edited in a small dialog. An operation — or its
  * path — that declares its own `servers` uses the first of those
  * instead: the document says that one lives elsewhere. */
@@ -13,7 +13,7 @@ const CUSTOM_SERVER = -1;
 function documentServers(spec) {
   return Array.isArray(spec.servers) && spec.servers.length
     ? spec.servers
-    : [{ url: "/", description: "этот сервер" }];
+    : [{ url: "/", description: "this server" }];
 }
 
 function defaultVars(server) {
@@ -66,14 +66,14 @@ function renderServerPicker() {
   const select = byId("serverSelect");
   select.innerHTML = servers.map((server, index) => (
     `<option value="${index}">${escapeHtml(serverLabel(server))}</option>`
-  )).join("") + `<option value="${CUSTOM_SERVER}">${choice.custom ? `Свой: ${escapeHtml(choice.custom)}` : "Свой адрес…"}</option>`;
+  )).join("") + `<option value="${CUSTOM_SERVER}">${choice.custom ? `Custom: ${escapeHtml(choice.custom)}` : "Custom URL…"}</option>`;
   select.value = String(choice.index);
   select.title = choice.index === CUSTOM_SERVER ? choice.custom : serverLabel(servers[choice.index]);
 
   const hasVariables = choice.index !== CUSTOM_SERVER && Object.keys(servers[choice.index].variables || {}).length > 0;
   const editButton = byId("serverEditBtn");
   editButton.classList.toggle("hidden", choice.index !== CUSTOM_SERVER && !hasVariables);
-  editButton.title = choice.index === CUSTOM_SERVER ? "Изменить свой адрес" : "Переменные сервера";
+  editButton.title = choice.index === CUSTOM_SERVER ? "Edit the custom URL" : "Server variables";
 }
 
 /* Every page part that depends on the server is re-derived from scratch. */
@@ -91,14 +91,14 @@ function openServerModal(mode) {
   backdrop.dataset.mode = mode;
 
   if (mode === "custom") {
-    byId("serverModalTitle").textContent = "Свой адрес сервера";
+    byId("serverModalTitle").textContent = "Custom server URL";
     body.innerHTML = `
       <input class="field-input" type="url" id="customServerInput" placeholder="http://localhost:8000" value="${escapeHtml(state.server.custom)}" autocomplete="off">
       <div class="field-error" id="serverModalError"></div>
-      <div class="faint" style="margin-top:8px;">Схема, хост, порт и общий префикс API, без пути эндпоинта — например <code>https://api.example.com/v1</code>.</div>`;
+      <div class="faint" style="margin-top:8px;">Scheme, host, port and the API's common prefix, without an endpoint path — e.g. <code>https://api.example.com/v1</code>.</div>`;
   } else {
     const server = documentServers(currentApi().spec)[state.server.index];
-    byId("serverModalTitle").textContent = "Переменные сервера";
+    byId("serverModalTitle").textContent = "Server variables";
     body.innerHTML = `<div class="faint" style="margin-bottom:8px;"><code>${escapeHtml(server.url)}</code></div>` +
       Object.entries(server.variables || {}).map(([name, variable]) => {
         const value = state.server.vars[name] ?? String(variable.default ?? "");
@@ -117,7 +117,7 @@ function openServerModal(mode) {
 }
 
 /* Closing without saving puts the top-bar select back on the server
- * that was in use — picking "Свой адрес…" and cancelling changes nothing. */
+ * that was in use — picking "Custom URL…" and cancelling changes nothing. */
 function closeServerModal() {
   byId("serverModalBackdrop").classList.remove("open");
   renderServerPicker();
@@ -130,7 +130,7 @@ function saveServerModal() {
     let url = null;
     try { url = new URL(value); } catch { url = null; }
     if (!url || (url.protocol !== "http:" && url.protocol !== "https:")) {
-      byId("serverModalError").textContent = "Нужен полный адрес: http://… или https://…";
+      byId("serverModalError").textContent = "A full URL is needed: http://… or https://…";
       return;
     }
     state.server = { index: CUSTOM_SERVER, custom: value.replace(/\/+$/, ""), vars: {} };

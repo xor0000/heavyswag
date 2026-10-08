@@ -11,7 +11,7 @@ const SCHEMA_MAX_DEPTH = 7;
 /* `schemaLink(name)` returns the href of a component schema's page —
  * provided by render.js, which owns the routes. */
 function renderSchemaTree(spec, schema, mode, schemaLink) {
-  if (schema === undefined) return '<div class="faint">Схема не указана</div>';
+  if (schema === undefined) return '<div class="faint">No schema</div>';
   const ctx = { spec, mode, schemaLink };
   const body = schemaChildren(ctx, schema, 0, new Set());
   const head = schemaSummary(ctx, schema);
@@ -44,13 +44,13 @@ function schemaChildren(ctx, schema, depth, seen) {
   let visited = seen;
   if (typeof schema.$ref === "string") {
     if (seen.has(schema.$ref)) {
-      return `<div class="sch-row sch-recursive">↺ рекурсивная ссылка на ${escapeHtml(refName(schema.$ref))}</div>`;
+      return `<div class="sch-row sch-recursive">↺ recursive reference to ${escapeHtml(refName(schema.$ref))}</div>`;
     }
     visited = new Set(seen).add(schema.$ref);
   }
   const s = deref(ctx.spec, schema);
   if (!s || typeof s !== "object") return "";
-  if (s.__unresolved) return `<div class="sch-row sch-recursive">не удалось разрешить ${escapeHtml(s.__unresolved)}</div>`;
+  if (s.__unresolved) return `<div class="sch-row sch-recursive">could not resolve ${escapeHtml(s.__unresolved)}</div>`;
   if (depth > SCHEMA_MAX_DEPTH) return "";
 
   const rows = [];
@@ -60,10 +60,10 @@ function schemaChildren(ctx, schema, depth, seen) {
     rows.push(propertyRow(ctx, name, prop, required.has(name), depth, visited));
   }
   for (const [pattern, prop] of Object.entries(s.patternProperties || {})) {
-    rows.push(propertyRow(ctx, `/${pattern}/`, prop, false, depth, visited, "ключи по шаблону"));
+    rows.push(propertyRow(ctx, `/${pattern}/`, prop, false, depth, visited, "keys matching the pattern"));
   }
   if (s.additionalProperties && typeof s.additionalProperties === "object") {
-    rows.push(propertyRow(ctx, "{ключ}", s.additionalProperties, false, depth, visited, "любые другие ключи"));
+    rows.push(propertyRow(ctx, "{key}", s.additionalProperties, false, depth, visited, "any other key"));
   }
 
   const types = schemaTypes(s);
@@ -73,24 +73,24 @@ function schemaChildren(ctx, schema, depth, seen) {
     });
     if (s.items && typeof s.items === "object") {
       const itemRows = schemaChildren(ctx, s.items, depth + 1, visited);
-      rows.push(itemRows || propertyRow(ctx, "[ ]", s.items, false, depth, visited, "элемент массива"));
+      rows.push(itemRows || propertyRow(ctx, "[ ]", s.items, false, depth, visited, "array item"));
     }
   }
 
   for (const keyword of ["allOf", "oneOf", "anyOf"]) {
     if (!Array.isArray(s[keyword])) continue;
-    const title = { allOf: "все из", oneOf: "ровно один из", anyOf: "любой из" }[keyword];
+    const title = { allOf: "all of", oneOf: "exactly one of", anyOf: "any of" }[keyword];
     if (keyword === "allOf") {
       // allOf composes one object — its parts' properties belong together.
       s.allOf.forEach((sub) => rows.push(schemaChildren(ctx, sub, depth + 1, visited)));
       continue;
     }
     rows.push(`<div class="sch-row"><div class="sch-variant-title">${keyword} — ${title}</div>${s[keyword].map((sub, index) => (
-      `<div class="sch-variant"><details class="sch-nested"${index === 0 ? " open" : ""}><summary>Вариант ${index + 1}: <span class="sch-type">${typeLabelHtml(ctx, sub)}</span></summary><div class="sch-children">${variantBody(ctx, sub, depth, visited)}</div></details></div>`
+      `<div class="sch-variant"><details class="sch-nested"${index === 0 ? " open" : ""}><summary>Variant ${index + 1}: <span class="sch-type">${typeLabelHtml(ctx, sub)}</span></summary><div class="sch-children">${variantBody(ctx, sub, depth, visited)}</div></details></div>`
     )).join("")}</div>`);
   }
   if (s.not !== undefined) {
-    rows.push(`<div class="sch-row"><div class="sch-variant-title">not — не должно подходить под</div><div class="sch-type">${typeLabelHtml(ctx, s.not)}</div></div>`);
+    rows.push(`<div class="sch-row"><div class="sch-variant-title">not — must not match</div><div class="sch-type">${typeLabelHtml(ctx, s.not)}</div></div>`);
   }
   return rows.join("");
 }
@@ -112,7 +112,7 @@ function propertyRow(ctx, name, prop, isRequired, depth, seen, note) {
 
   let nested = "";
   if (recursive) {
-    nested = `<div class="sch-recursive">↺ рекурсивная ссылка на ${escapeHtml(refName(prop.$ref))}</div>`;
+    nested = `<div class="sch-recursive">↺ recursive reference to ${escapeHtml(refName(prop.$ref))}</div>`;
   } else if (children) {
     nested = `<details class="sch-nested"${depth < 1 ? " open" : ""}><summary>${escapeHtml(nestedLabel(ctx, prop))}</summary><div class="sch-children">${children}</div></details>`;
   }
@@ -135,9 +135,9 @@ function propertyRow(ctx, name, prop, isRequired, depth, seen, note) {
 
 function nestedLabel(ctx, prop) {
   const s = deref(ctx.spec, prop) || {};
-  if (schemaTypes(s).includes("array")) return "элементы массива";
-  if (s.oneOf || s.anyOf) return "варианты";
-  return componentSchemaName(prop) ? `поля ${refName(prop.$ref)}` : "поля";
+  if (schemaTypes(s).includes("array")) return "array items";
+  if (s.oneOf || s.anyOf) return "variants";
+  return componentSchemaName(prop) ? `${refName(prop.$ref)} fields` : "fields";
 }
 
 /* The type label, with every component schema name turned into a
@@ -206,7 +206,7 @@ function constraintList(s) {
   add("maxProperties", s.maxProperties);
   add("contentMediaType", s.contentMediaType);
   add("contentEncoding", s.contentEncoding);
-  if (Array.isArray(s.examples) && s.examples.length) add("пример", s.examples[0]);
-  else if (s.example !== undefined) add("пример", s.example);
+  if (Array.isArray(s.examples) && s.examples.length) add("example", s.examples[0]);
+  else if (s.example !== undefined) add("example", s.example);
   return out;
 }

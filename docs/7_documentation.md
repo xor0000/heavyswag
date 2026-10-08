@@ -98,12 +98,12 @@ doc that lies:
 username: Annotated[
     Body[str],
     StrField(pattern=r"^[a-z0-9_]+$"),
-    DocField(example="Алекс"),  # (1)!
+    DocField(example="Alex!"),  # (1)!
 ]
 ```
 
 1.  Rejected at startup with `RouteTreeError: DTO '...' field 'username'
-    documents example 'Алекс', which its own validator rejects: String does
+    documents example 'Alex!', which its own validator rejects: String does
     not match pattern`.
 
 ### Validators become the schema
@@ -382,9 +382,9 @@ app = HeavySwag(
 
 Without `doc=`, the document is titled `HeavySwag API`, version `0.1.0`.
 
-`servers` is optional too. On the HTML page they fill the **Сервер** menu in
-the top bar — where every **Попробовать** request goes. Without any, the
-menu offers «этот сервер»: the server the page itself came from — exactly
+`servers` is optional too. On the HTML page they fill the **Server** menu in
+the top bar — where every **Try it out** request goes. Without any, the
+menu offers “this server”: the server the page itself came from — exactly
 right when the app serves its own docs (see
 [below](#serving-the-page-from-your-app)).
 
@@ -436,11 +436,11 @@ straight from disk or can be served by a route. In it:
   schemas;
 - parameters, request and response bodies as expandable schema trees, with
   examples;
-- **Попробовать** (try it out): fill in parameters and the body (as JSON or field by
+- **Try it out**: fill in parameters and the body (as JSON or field by
   field), send it for real, see the status, headers, timing and body — and
   whether the response matches its documented schema;
-- a **Сервер** menu in the top bar, shared by every route and remembered
-  between visits: the document's `servers`, or «Свой адрес…» — a dialog
+- a **Server** menu in the top bar, shared by every route and remembered
+  between visits: the document's `servers`, or “Custom URL…” — a dialog
   where you type any URL (e.g. `http://localhost:8000` for a page opened as
   a file). A server with variables (`http://localhost:{port}`) gets a ✎
   button to set them. A route whose spec declares its own `servers` always
@@ -448,7 +448,9 @@ straight from disk or can be served by a route. In it:
 - an **Authorize** dialog for every security scheme, applied to the
   routes that need it;
 - global headers / cookies sent with every request;
-- curl for every request;
+- the request's headers and cookies, one per line — click a name or a
+  value to copy it;
+- curl for every request — one longer than 10 lines starts collapsed;
 - light / dark theme.
 
 ### Validation in the browser
@@ -456,7 +458,7 @@ straight from disk or can be served by a route. In it:
 The page checks a request against the same schema before sending it — a
 missing required field, a value outside `min`/`max`, a string that doesn't
 match `pattern`, a wrong enum value, an unknown body key, broken JSON. The
-offending input is highlighted with the reason, and **Отправить** (send) stays disabled
+offending input is highlighted with the reason, and **Send** stays disabled
 until it's fixed. The server checks everything again anyway — the page only
 saves a round trip.
 

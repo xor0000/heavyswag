@@ -638,10 +638,10 @@ def test_assemble_dto_validators_rejects_example_its_validator_rejects() -> None
         name: Annotated[
             Body[str],
             StrField(pattern=r"^[a-z]+$"),
-            DocField(example="Алекс"),
+            DocField(example="Alex!"),
         ]
 
-    with pytest.raises(RouteTreeError, match="documents example 'Алекс'"):
+    with pytest.raises(RouteTreeError, match="documents example 'Alex!'"):
         assemble_dto_validators(_Dto)
 
 

@@ -1,10 +1,10 @@
 /* render.js — the sidebar and every page: API overview, operation (with
- * "Попробовать"), webhook, component schema; plus the global
+ * "Try it out"), webhook, component schema; plus the global
  * headers / cookies drawer.
  *
  * Pages are rendered as HTML strings (every interpolated value goes
  * through `escapeHtml` or `renderMarkdown`) and wired up afterwards.
- * Typing into "Попробовать" never re-renders the page — only the parts
+ * Typing into "Try it out" never re-renders the page — only the parts
  * derived from the draft (validation, headers, curl) are refreshed, so
  * focus and cursor position survive. */
 
@@ -35,7 +35,7 @@ function renderSidebar() {
       <span class="m-tag ${methodClass(entry.method)}">${entry.method}</span>
       <span class="path">${escapeHtml(entry.path)}</span>
       ${entry.deprecated ? '<span class="mini-dep" title="Deprecated"></span>' : ""}
-      ${secured ? `<span class="mini-lock" title="Требует авторизации">${ICONS.lock}</span>` : ""}
+      ${secured ? `<span class="mini-lock" title="Requires authorization">${ICONS.lock}</span>` : ""}
     </div>`;
   };
   const groupHtml = (id, title, items, count, description) => {
@@ -47,7 +47,7 @@ function renderSidebar() {
     </div>`;
   };
 
-  let html = `<div class="nav-link ${route.view === "overview" ? "active" : ""}" data-nav="overview">${ICONS.home} Обзор API</div>`;
+  let html = `<div class="nav-link ${route.view === "overview" ? "active" : ""}" data-nav="overview">${ICONS.home} API overview</div>`;
   for (const group of api.groups) {
     const items = group.ops.filter(matches).map((entry) => itemHtml(entry, "op"));
     html += groupHtml(`tag:${group.name}`, group.name, items, items.length, group.tag.description);
@@ -63,11 +63,11 @@ function renderSidebar() {
     </div>`
   ));
   if (!("schemas" in state.collapsed)) state.collapsed.schemas = true;
-  html += groupHtml("schemas", "Схемы", schemaItems, schemaItems.length);
+  html += groupHtml("schemas", "Schemas", schemaItems, schemaItems.length);
 
   const sidebar = byId("sidebar");
   const found = api.ops.some(matches) || hooks.length || schemaItems.length;
-  sidebar.innerHTML = html + (query && !found ? '<div class="sidebar-empty">Ничего не найдено</div>' : "");
+  sidebar.innerHTML = html + (query && !found ? '<div class="sidebar-empty">Nothing found</div>' : "");
 
   sidebar.querySelectorAll("[data-toggle-group]").forEach((node) => node.addEventListener("click", () => {
     const id = node.dataset.toggleGroup;
@@ -95,7 +95,7 @@ function renderMain() {
     return renderSchemaPage(api, route.key);
   }
   if (route.view !== "overview") {
-    main.innerHTML = `<div class="callout info">${ICONS.info}<div><b>Такой страницы нет</b>Выберите эндпоинт или схему слева.</div></div>`;
+    main.innerHTML = `<div class="callout info">${ICONS.info}<div><b>No such page</b>Pick an endpoint or a schema on the left.</div></div>`;
     return undefined;
   }
   return renderOverview(api);
@@ -111,14 +111,14 @@ function renderOverview(api) {
   const contact = info.contact || {};
   const meta = [];
   if (contact.name || contact.email || contact.url) {
-    meta.push(`Контакт: ${escapeHtml(contact.name || "")} ${contact.email ? `<a href="mailto:${escapeHtml(contact.email)}">${escapeHtml(contact.email)}</a>` : ""} ${contact.url ? `<a href="${escapeHtml(safeUrl(contact.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(contact.url)}</a>` : ""}`);
+    meta.push(`Contact: ${escapeHtml(contact.name || "")} ${contact.email ? `<a href="mailto:${escapeHtml(contact.email)}">${escapeHtml(contact.email)}</a>` : ""} ${contact.url ? `<a href="${escapeHtml(safeUrl(contact.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(contact.url)}</a>` : ""}`);
   }
   if (info.license) {
     const license = info.license;
     const label = escapeHtml(license.name) + (license.identifier ? ` (${escapeHtml(license.identifier)})` : "");
-    meta.push(`Лицензия: ${license.url ? `<a href="${escapeHtml(safeUrl(license.url))}" target="_blank" rel="noopener noreferrer">${label}</a>` : label}`);
+    meta.push(`License: ${license.url ? `<a href="${escapeHtml(safeUrl(license.url))}" target="_blank" rel="noopener noreferrer">${label}</a>` : label}`);
   }
-  if (info.termsOfService) meta.push(`<a href="${escapeHtml(safeUrl(info.termsOfService))}" target="_blank" rel="noopener noreferrer">Условия использования</a>`);
+  if (info.termsOfService) meta.push(`<a href="${escapeHtml(safeUrl(info.termsOfService))}" target="_blank" rel="noopener noreferrer">Terms of service</a>`);
 
   const servers = (spec.servers || []).map((server) => `<div class="server-row">${escapeHtml(server.url)}${server.description ? ` <span class="muted">— ${escapeHtml(server.description)}</span>` : ""}
     ${Object.entries(server.variables || {}).map(([name, variable]) => `<div class="faint">{${escapeHtml(name)}} = ${escapeHtml(variable.default)}${variable.enum ? ` (${variable.enum.map(escapeHtml).join(" | ")})` : ""}${variable.description ? ` — ${escapeHtml(variable.description)}` : ""}</div>`).join("")}
@@ -139,7 +139,7 @@ function renderOverview(api) {
       <h1 class="plain">${escapeHtml(info.title || "API")}</h1>
       ${info.summary ? `<p class="ep-summary">${escapeHtml(info.summary)}</p>` : ""}
       <div class="badges-row">
-        ${info.version ? `<span class="badge neutral">версия ${escapeHtml(info.version)}</span>` : ""}
+        ${info.version ? `<span class="badge neutral">version ${escapeHtml(info.version)}</span>` : ""}
         <span class="badge neutral mono">OpenAPI ${escapeHtml(spec.openapi || "")}</span>
         ${spec.jsonSchemaDialect ? `<span class="badge neutral mono">${escapeHtml(spec.jsonSchemaDialect)}</span>` : ""}
       </div>
@@ -148,15 +148,15 @@ function renderOverview(api) {
     ${meta.length ? `<div class="muted" style="margin-top:12px;display:flex;flex-direction:column;gap:2px;">${meta.map((line) => `<div>${line}</div>`).join("")}</div>` : ""}
     ${spec.externalDocs ? `<div style="margin-top:8px;">${externalDocsHtml(spec.externalDocs)}</div>` : ""}
     <div class="section"><div class="overview-grid">
-      ${statCard("Эндпоинтов", api.ops.length)}
-      ${statCard("Групп", api.groups.length)}
-      ${statCard("Схем", schemaCount)}
-      ${api.webhooks.length ? statCard("Вебхуков", api.webhooks.length) : ""}
+      ${statCard("Endpoints", api.ops.length)}
+      ${statCard("Groups", api.groups.length)}
+      ${statCard("Schemas", schemaCount)}
+      ${api.webhooks.length ? statCard("Webhooks", api.webhooks.length) : ""}
     </div></div>
-    ${servers ? `<div class="section"><h2>Серверы</h2>${servers}</div>` : ""}
-    ${tags ? `<div class="section"><h2>Группы</h2>${tags}</div>` : ""}
-    ${security ? `<div class="section"><h2>Авторизация</h2>${security}</div>` : ""}
-    <div class="section"><h2>Спецификация</h2><button class="pill-btn" id="downloadSpecBtn" style="display:inline-flex;">Скачать openapi.json</button></div>`;
+    ${servers ? `<div class="section"><h2>Servers</h2>${servers}</div>` : ""}
+    ${tags ? `<div class="section"><h2>Groups</h2>${tags}</div>` : ""}
+    ${security ? `<div class="section"><h2>Authorization</h2>${security}</div>` : ""}
+    <div class="section"><h2>Specification</h2><button class="pill-btn" id="downloadSpecBtn" style="display:inline-flex;">Download openapi.json</button></div>`;
 
   bindNavLinks();
   byId("downloadSpecBtn").addEventListener("click", () => {
@@ -196,10 +196,10 @@ function renderSchemaPage(api, name) {
       <div class="badges-row"><span class="badge neutral mono">${escapeHtml(typeLabel(spec, schema))}</span>${schema.deprecated ? `<span class="badge deprecated">${ICONS.warn} Deprecated</span>` : ""}</div>
     </div>
     <div class="section split">
-      <div><h2 class="sub-title">Структура</h2>${renderSchemaTree(spec, ref, "schema", schemaLinkFor())}</div>
-      <div><h2 class="sub-title">Пример</h2><pre class="example">${escapeHtml(prettyJson(exampleFromSchema(spec, ref, "response")))}</pre></div>
+      <div><h2 class="sub-title">Structure</h2>${renderSchemaTree(spec, ref, "schema", schemaLinkFor())}</div>
+      <div><h2 class="sub-title">Example</h2><pre class="example">${escapeHtml(prettyJson(exampleFromSchema(spec, ref, "response")))}</pre></div>
     </div>
-    ${usedBy.length || usedBySchemas.length ? `<div class="section"><h2>Используется</h2>
+    ${usedBy.length || usedBySchemas.length ? `<div class="section"><h2>Used by</h2>
       ${usedBy.map((entry) => `<div class="ep-item" data-nav="op" data-key="${escapeHtml(entry.key)}"><span class="m-tag ${methodClass(entry.method)}">${entry.method}</span><span class="path">${escapeHtml(entry.path)}</span></div>`).join("")}
       ${usedBySchemas.map((other) => `<div class="ep-item" data-nav="schema" data-key="${escapeHtml(other)}"><span class="m-tag m-schema">{ }</span><span class="path">${escapeHtml(other)}</span></div>`).join("")}
     </div>` : ""}`;
@@ -284,16 +284,16 @@ function renderOperationPage(api, entry) {
     ${op.externalDocs ? `<div style="margin-top:8px;">${externalDocsHtml(op.externalDocs)}</div>` : ""}`;
 
   if (entry.deprecated) {
-    html += `<div class="callout warn">${ICONS.warn}<div><b>Эндпоинт устарел</b>Он ещё работает, но может быть удалён в следующих версиях.</div></div>`;
+    html += `<div class="callout warn">${ICONS.warn}<div><b>Deprecated</b>It still works, but may be removed in a future version.</div></div>`;
   }
   if (entry.kind === "webhook") {
-    html += `<div class="callout info">${ICONS.info}<div><b>Вебхук</b>Этот запрос отправляет сам API — на адрес, который вы ему укажете. Ниже описано, что придёт и какой ответ от вас ожидается.</div></div>`;
+    html += `<div class="callout info">${ICONS.info}<div><b>Webhook</b>The API itself sends this request — to a URL you give it. Below is what arrives and which response is expected from you.</div></div>`;
   }
   if (secured) {
     const auth = resolveAuth(spec, requirements);
     html += auth.missing.length
-      ? `<div class="callout danger">${ICONS.lock}<div><b>Требует авторизации</b>${escapeHtml(describeRequirements(requirements))}. <button class="link-btn" data-open-auth style="margin:0;">Авторизоваться →</button></div></div>`
-      : `<div class="callout info">${ICONS.unlock}<div><b>Авторизация подставляется</b>${escapeHtml(auth.used.join(" + "))}</div></div>`;
+      ? `<div class="callout danger">${ICONS.lock}<div><b>Requires authorization</b>${escapeHtml(describeRequirements(requirements))}. <button class="link-btn" data-open-auth style="margin:0;">Authorize →</button></div></div>`
+      : `<div class="callout info">${ICONS.unlock}<div><b>Authorization is applied</b>${escapeHtml(auth.used.join(" + "))}</div></div>`;
   }
 
   html += paramsSectionHtml(spec, entry, draft, interactive);
@@ -322,7 +322,7 @@ function paramsSectionHtml(spec, entry, draft, interactive) {
     const required = param.required || param.in === "path";
     const constraints = constraintList(s);
     const style = param.style || param.explode !== undefined
-      ? `style: ${param.style || "по умолчанию"}${param.explode !== undefined ? `, explode: ${param.explode}` : ""}` : "";
+      ? `style: ${param.style || "default"}${param.explode !== undefined ? `, explode: ${param.explode}` : ""}` : "";
     const placeholder = paramExampleText(spec, param) || typeLabel(spec, schema);
     const input = interactive
       ? (param.content
@@ -347,8 +347,8 @@ function paramsSectionHtml(spec, entry, draft, interactive) {
       </td>
     </tr>`;
   }).join("");
-  return `<div class="section"><h2>Параметры</h2>
-    <table class="params"><thead><tr><th>Имя</th><th>Тип</th><th>${interactive ? "Значение" : "Описание"}</th></tr></thead><tbody>${rows}</tbody></table>
+  return `<div class="section"><h2>Parameters</h2>
+    <table class="params"><thead><tr><th>Name</th><th>Type</th><th>${interactive ? "Value" : "Description"}</th></tr></thead><tbody>${rows}</tbody></table>
   </div>`;
 }
 
@@ -362,7 +362,7 @@ function valueInputHtml(spec, schema, value, attrs, placeholder) {
 
   if (options) {
     return `<select class="field-input" ${attrs}>
-      <option value="" ${value === "" ? "selected" : ""}>— не задано —</option>
+      <option value="" ${value === "" ? "selected" : ""}>— not set —</option>
       ${options.filter((option) => option !== null).map((option) => (
         `<option value="${escapeHtml(toInputText(option))}" ${toInputText(option) === value ? "selected" : ""}>${escapeHtml(toInputText(option))}</option>`
       )).join("")}
@@ -373,7 +373,7 @@ function valueInputHtml(spec, schema, value, attrs, placeholder) {
   if (complex) {
     return `<textarea class="field-input" ${attrs} placeholder="${escapeHtml(placeholder)}">${escapeHtml(value)}</textarea>`;
   }
-  const hint = itemSchema ? `${placeholder} (через запятую)` : placeholder;
+  const hint = itemSchema ? `${placeholder} (comma-separated)` : placeholder;
   return `<input class="field-input" type="text" ${attrs} value="${escapeHtml(value)}" placeholder="${escapeHtml(hint)}" autocomplete="off">`;
 }
 
@@ -388,7 +388,7 @@ function bodySectionHtml(ctx, interactive) {
   const mediaObj = body.content[media] || {};
   const link = schemaLinkFor();
 
-  let html = `<div class="section"><h2>Тело запроса ${body.required ? '<span class="badge protected">обязательно</span>' : '<span class="badge neutral">необязательно</span>'}</h2>
+  let html = `<div class="section"><h2>Request body ${body.required ? '<span class="badge protected">required</span>' : '<span class="badge neutral">optional</span>'}</h2>
     ${body.description ? `<div class="md dim" style="margin-bottom:10px;">${renderMarkdown(body.description)}</div>` : ""}`;
 
   if (!interactive) {
@@ -403,14 +403,14 @@ function bodySectionHtml(ctx, interactive) {
   if (isJsonMedia(media) && formable) {
     html += `<div class="body-toggle">
       <button data-body-mode="json" class="${draft.bodyMode === "json" ? "active" : ""}">JSON</button>
-      <button data-body-mode="form" class="${draft.bodyMode === "form" ? "active" : ""}">Форма по полям</button>
+      <button data-body-mode="form" class="${draft.bodyMode === "form" ? "active" : ""}">Form</button>
     </div>`;
   }
   const examples = objectExamples(spec, mediaObj, "request");
   if (examples.length > 1) {
-    html += `<select class="field-input" id="bodyExampleSelect" style="flex:none;width:auto;" title="Примеры">${examples.map((ex, index) => `<option value="${index}">${escapeHtml(ex.summary || ex.name)}</option>`).join("")}</select>`;
+    html += `<select class="field-input" id="bodyExampleSelect" style="flex:none;width:auto;" title="Examples">${examples.map((ex, index) => `<option value="${index}">${escapeHtml(ex.summary || ex.name)}</option>`).join("")}</select>`;
   }
-  if (!isFormMedia(media) || isJsonMedia(media)) html += '<button class="pill-btn" id="resetBodyBtn">Подставить пример</button>';
+  if (!isFormMedia(media) || isJsonMedia(media)) html += '<button class="pill-btn" id="resetBodyBtn">Insert example</button>';
   html += "</div>";
 
   if (isJsonMedia(media) && draft.bodyMode === "form" && formable) {
@@ -418,12 +418,12 @@ function bodySectionHtml(ctx, interactive) {
   } else if (isJsonMedia(media) || isTextMedia(media)) {
     html += `<textarea class="json-editor" id="bodyText" spellcheck="false">${escapeHtml(draft.bodyText)}</textarea>`;
   } else if (isFormMedia(media)) {
-    html += schema.properties ? formFieldsHtml(ctx, schema) : '<div class="faint">Схема формы не описана</div>';
+    html += schema.properties ? formFieldsHtml(ctx, schema) : '<div class="faint">The form schema is not described</div>';
   } else {
-    html += `<input class="field-input" type="file" data-body-file>${state.files.get(`${ctx.draftKey}|__body__`) ? `<div class="faint">Выбран: ${escapeHtml(state.files.get(`${ctx.draftKey}|__body__`)[0].name)}</div>` : ""}`;
+    html += `<input class="field-input" type="file" data-body-file>${state.files.get(`${ctx.draftKey}|__body__`) ? `<div class="faint">Selected: ${escapeHtml(state.files.get(`${ctx.draftKey}|__body__`)[0].name)}</div>` : ""}`;
   }
   html += `<div class="field-error" data-error-for="body"></div>
-    <details class="sch-nested" style="margin-top:12px;"><summary>Схема тела</summary><div style="margin-top:8px;">${renderSchemaTree(spec, mediaObj.schema, "request", link)}</div></details>
+    <details class="sch-nested" style="margin-top:12px;"><summary>Body schema</summary><div style="margin-top:8px;">${renderSchemaTree(spec, mediaObj.schema, "request", link)}</div></details>
     ${encodingHtml(mediaObj)}
   </div>`;
   return html;
@@ -437,7 +437,7 @@ function formFieldsHtml(ctx, schema) {
     const binary = isBinarySchema(spec, prop);
     const files = state.files.get(`${ctx.draftKey}|${name}`) || [];
     const input = binary
-      ? `<input class="field-input" type="file" data-form-file="${escapeHtml(name)}" ${schemaTypes(s).includes("array") ? "multiple" : ""}>${files.length ? `<div class="faint">Выбрано: ${files.map((file) => escapeHtml(file.name)).join(", ")}</div>` : ""}`
+      ? `<input class="field-input" type="file" data-form-file="${escapeHtml(name)}" ${schemaTypes(s).includes("array") ? "multiple" : ""}>${files.length ? `<div class="faint">Selected: ${files.map((file) => escapeHtml(file.name)).join(", ")}</div>` : ""}`
       : valueInputHtml(spec, prop, draft.form[name] ?? "", `data-form-field="${escapeHtml(name)}"`, typeLabel(spec, prop));
     return `<tr>
       <td><div class="field-name">${escapeHtml(name)}${required.has(name) ? '<span class="req-star"> *</span>' : ""}</div>${s.deprecated ? '<span class="sch-flag dep">deprecated</span>' : ""}</td>
@@ -445,7 +445,7 @@ function formFieldsHtml(ctx, schema) {
       <td class="col-input">${input}<div class="field-error" data-error-for="form:${escapeHtml(name)}"></div>${s.description ? `<div class="field-desc md dim small">${renderMarkdown(s.description)}</div>` : ""}</td>
     </tr>`;
   }).join("");
-  return `<table class="params"><thead><tr><th>Поле</th><th>Тип</th><th>Значение</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table class="params"><thead><tr><th>Field</th><th>Type</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 /* `encoding` of a multipart / urlencoded body: per-property content
@@ -453,7 +453,7 @@ function formFieldsHtml(ctx, schema) {
 function encodingHtml(mediaObj) {
   const entries = Object.entries(mediaObj.encoding || {});
   if (!entries.length) return "";
-  return `<div class="sub-title" style="margin-top:12px;">Кодирование полей</div>${entries.map(([name, encoding]) => (
+  return `<div class="sub-title" style="margin-top:12px;">Field encoding</div>${entries.map(([name, encoding]) => (
     `<div class="field-cons"><b>${escapeHtml(name)}</b>: ${escapeHtml([
       encoding.contentType && `contentType ${encoding.contentType}`,
       encoding.style && `style ${encoding.style}`,
@@ -467,11 +467,11 @@ function encodingHtml(mediaObj) {
 /* ---------- try it ---------- */
 
 function tryItSectionHtml() {
-  return `<div class="section"><h2>Попробовать</h2>
-    <div class="sub-title">Заголовки и куки запроса <span class="sub-hint">нажмите на имя или значение, чтобы скопировать</span></div>
+  return `<div class="section"><h2>Try it out</h2>
+    <div class="sub-title">Request headers and cookies <span class="sub-hint">click a name or a value to copy it</span></div>
     <div class="headers-preview" id="headersPreview"></div>
     <div class="exec-row">
-      <button class="exec-btn" id="executeBtn">▶ Отправить</button>
+      <button class="exec-btn" id="executeBtn">▶ Send</button>
       <span class="exec-hint" id="execHint"></span>
     </div>
     <div class="code-box">
@@ -479,7 +479,7 @@ function tryItSectionHtml() {
       <div class="curl-clip" id="curlClip"><pre id="curlPreview"></pre></div>
       <button class="link-btn hidden" id="curlToggleBtn"></button>
     </div>
-    <div class="response-panel" id="responsePanel"><div class="rp-placeholder">Нажмите «Отправить», чтобы выполнить запрос</div></div>
+    <div class="response-panel" id="responsePanel"><div class="rp-placeholder">Click “Send” to run the request</div></div>
   </div>`;
 }
 
@@ -518,7 +518,7 @@ function bindTryIt(ctx) {
   if (resetBody) resetBody.addEventListener("click", () => { resetBodyDraft(spec, entry, draft, draft.media, exampleSelect ? Number(exampleSelect.value) : 0); renderMain(); });
   main.querySelectorAll("[data-body-mode]").forEach((button) => button.addEventListener("click", () => switchBodyMode(ctx, button.dataset.bodyMode)));
 
-  byId("copyCurlBtn").addEventListener("click", () => copyText(byId("curlPreview").textContent, "curl скопирован"));
+  byId("copyCurlBtn").addEventListener("click", () => copyText(byId("curlPreview").textContent, "curl copied"));
   byId("curlToggleBtn").addEventListener("click", () => {
     state.curlExpanded = state.curlExpanded === ctx.draftKey ? null : ctx.draftKey;
     renderCurl(ctx, byId("curlPreview").textContent);
@@ -536,7 +536,7 @@ function switchBodyMode(ctx, mode) {
   if (mode === "form") {
     let parsed;
     try { parsed = JSON.parse(draft.bodyText || "{}"); } catch {
-      showToast("JSON не разбирается — исправьте его перед переключением");
+      showToast("The JSON doesn't parse — fix it before switching");
       return;
     }
     const s = deref(spec, schema) || {};
@@ -562,18 +562,18 @@ function validateDraft(ctx) {
     const raw = draft.params[key];
     const empty = raw === undefined || String(raw).trim() === "";
     if (empty) {
-      if (param.required || param.in === "path") errors.set(`param:${key}`, "Обязательный параметр");
+      if (param.required || param.in === "path") errors.set(`param:${key}`, "Required parameter");
       continue;
     }
     if (param.content) {
       const media = Object.keys(param.content)[0] || "";
       if (isJsonMedia(media)) {
-        try { JSON.parse(raw); } catch (error) { errors.set(`param:${key}`, `Невалидный JSON: ${error.message}`); }
+        try { JSON.parse(raw); } catch (error) { errors.set(`param:${key}`, `Invalid JSON: ${error.message}`); }
       }
       continue;
     }
     const problems = validateSchema(spec, param.schema, coerceInput(spec, param.schema, raw), "request", "");
-    if (problems.length) errors.set(`param:${key}`, problems.slice(0, 3).map((p) => p.replace(/^значение: /, "")).join("\n"));
+    if (problems.length) errors.set(`param:${key}`, problems.slice(0, 3).map((p) => p.replace(/^value: /, "")).join("\n"));
   }
 
   const body = requestBodyOf(spec, entry);
@@ -581,13 +581,13 @@ function validateDraft(ctx) {
     const mediaObj = body.content[draft.media] || {};
     const schema = deref(spec, mediaObj.schema) || {};
     const built = buildBody(ctx);
-    if (built.kind === "none" && body.required) errors.set("body", "Тело запроса обязательно");
+    if (built.kind === "none" && body.required) errors.set("body", "The request body is required");
     if (isJsonMedia(draft.media) && draft.bodyMode === "json" && draft.bodyText.trim()) {
       try {
         const problems = validateSchema(spec, mediaObj.schema, JSON.parse(draft.bodyText), "request");
         if (problems.length) errors.set("body", problems.slice(0, 6).join("\n"));
       } catch (error) {
-        errors.set("body", `Невалидный JSON: ${error.message}`);
+        errors.set("body", `Invalid JSON: ${error.message}`);
       }
     }
     if ((isFormMedia(draft.media) && !isJsonMedia(draft.media)) || (isJsonMedia(draft.media) && draft.bodyMode === "form")) {
@@ -595,25 +595,25 @@ function validateDraft(ctx) {
       for (const [name, prop] of Object.entries(schema.properties || {})) {
         if (!isPropertyVisible(spec, prop, "request")) continue;
         if (isBinarySchema(spec, prop)) {
-          if (required.has(name) && !(state.files.get(`${ctx.draftKey}|${name}`) || []).length) errors.set(`form:${name}`, "Выберите файл");
+          if (required.has(name) && !(state.files.get(`${ctx.draftKey}|${name}`) || []).length) errors.set(`form:${name}`, "Choose a file");
           continue;
         }
         const raw = draft.form[name];
         if (raw === undefined || String(raw).trim() === "") {
-          if (required.has(name)) errors.set(`form:${name}`, "Обязательное поле");
+          if (required.has(name)) errors.set(`form:${name}`, "Required field");
           continue;
         }
         const problems = validateSchema(spec, prop, coerceInput(spec, prop, raw), "request", "");
-        if (problems.length) errors.set(`form:${name}`, problems.slice(0, 3).map((p) => p.replace(/^значение: /, "")).join("\n"));
+        if (problems.length) errors.set(`form:${name}`, problems.slice(0, 3).map((p) => p.replace(/^value: /, "")).join("\n"));
       }
     }
   }
 
   const target = requestBase(spec, entry);
   if (!target.url && state.server.index === CUSTOM_SERVER) {
-    blocking.push("Укажите свой адрес в меню «Сервер» вверху");
+    blocking.push("Enter your URL in the “Server” menu at the top");
   } else if (!absoluteUrl(target.url || "/")) {
-    blocking.push("Сервер задан относительным адресом, а страница открыта как файл — выберите «Свой адрес…» в меню «Сервер» вверху");
+    blocking.push("The server is a relative URL, but the page was opened as a file — pick “Custom URL…” in the “Server” menu at the top");
   }
   return { errors, blocking };
 }
@@ -640,8 +640,8 @@ function refreshTryIt(ctx) {
 
   const ok = !errors.size && !blocking.length;
   const hint = byId("execHint");
-  const warnings = req.auth.missing.length ? [`Нет данных для авторизации: ${req.auth.missing.join(", ")}`] : [];
-  hint.textContent = ok ? (warnings[0] || "Запрос соответствует схеме") : (blocking[0] || "Исправьте подсвеченные поля");
+  const warnings = req.auth.missing.length ? [`No credentials for: ${req.auth.missing.join(", ")}`] : [];
+  hint.textContent = ok ? (warnings[0] || "The request matches the schema") : (blocking[0] || "Fix the highlighted fields");
   hint.classList.toggle("ok", ok && !warnings.length);
   byId("executeBtn").disabled = !ok;
   return ok;
@@ -664,14 +664,14 @@ function renderHeadersPreview(req) {
 
   const rows = req.headers.map(([key, value, source]) => row(key, value, source, tagFor[source] || ""));
   for (const [key, value, source] of req.cookies) {
-    rows.push(row(key, value, source, '<span class="src-tag">COOKIE</span><span class="src-tag warn">только curl</span>'));
+    rows.push(row(key, value, source, '<span class="src-tag">COOKIE</span><span class="src-tag warn">curl only</span>'));
   }
   for (const name of req.auth.missing) {
-    rows.push(`<div class="row">${piece("kv-key", name, name)}<span class="kv-sep">:</span><span class="kv-val unset">не задано</span><span class="src-tag warn">AUTH</span></div>`);
+    rows.push(`<div class="row">${piece("kv-key", name, name)}<span class="kv-sep">:</span><span class="kv-val unset">not set</span><span class="src-tag warn">AUTH</span></div>`);
   }
 
   const box = byId("headersPreview");
-  box.innerHTML = rows.join("") || '<div class="faint">Нет заголовков</div>';
+  box.innerHTML = rows.join("") || '<div class="faint">No headers</div>';
   box.querySelectorAll("[data-copy-index]").forEach((element) => element.addEventListener("click", () => {
     copyWithFlash(element, copies[Number(element.dataset.copyIndex)]);
   }));
@@ -698,7 +698,7 @@ function renderCurl(ctx, text) {
 
   clip.classList.toggle("collapsed", long && !expanded);
   toggle.classList.toggle("hidden", !long);
-  toggle.textContent = expanded ? "Свернуть" : `Показать полностью · ${lines} ${pluralRu(lines, "строка", "строки", "строк")}`;
+  toggle.textContent = expanded ? "Collapse" : `Show all · ${lines} lines`;
 }
 
 function maskSecret(value) {
@@ -738,23 +738,23 @@ function responsesSectionHtml(api, entry) {
       const schema = header.schema ?? (Object.values(header.content || {})[0] || {}).schema;
       return `<tr><td><span class="field-name">${escapeHtml(name)}</span>${header.required ? '<span class="req-star"> *</span>' : ""}${header.deprecated ? ' <span class="sch-flag dep">deprecated</span>' : ""}</td>
         <td class="field-type">${escapeHtml(typeLabel(spec, schema))}</td>
-        <td>${header.description ? `<div class="md dim small">${renderMarkdown(header.description)}</div>` : ""}${header.example !== undefined ? `<div class="field-cons">пример: ${escapeHtml(toInputText(header.example))}</div>` : ""}</td></tr>`;
+        <td>${header.description ? `<div class="md dim small">${renderMarkdown(header.description)}</div>` : ""}${header.example !== undefined ? `<div class="field-cons">example: ${escapeHtml(toInputText(header.example))}</div>` : ""}</td></tr>`;
     }).join("");
     const links = Object.entries(response.links || {}).map(([name, raw]) => linkHtml(api, name, deref(spec, raw) || {})).join("");
     const content = response.content && Object.keys(response.content).length
       ? contentBlocksHtml(spec, response.content, "response", link, `${idBase}-${index}`)
-      : '<div class="faint">Без тела</div>';
+      : '<div class="faint">No body</div>';
     return `<details class="resp-doc" ${code === firstSuccess ? "open" : ""}>
       <summary><span class="status-chip ${statusClass(code)}">${escapeHtml(code)}</span><span>${escapeHtml(firstLine)}</span>${ICONS.chev}</summary>
       <div class="resp-body">
         ${description.includes("\n") ? `<div class="md dim small" style="margin-bottom:10px;">${renderMarkdown(description)}</div>` : ""}
-        ${headers ? `<div class="sub-title">Заголовки</div><table class="params"><tbody>${headers}</tbody></table>` : ""}
-        <div class="sub-title">Тело</div>${content}
+        ${headers ? `<div class="sub-title">Headers</div><table class="params"><tbody>${headers}</tbody></table>` : ""}
+        <div class="sub-title">Body</div>${content}
         ${links ? `<div class="sub-title">Links</div>${links}` : ""}
       </div>
     </details>`;
   }).join("");
-  return `<div class="section"><h2>Ответы</h2>${items}</div>`;
+  return `<div class="section"><h2>Responses</h2>${items}</div>`;
 }
 
 /* Media types of a Request Body / Response as tabs, each with its
@@ -777,8 +777,8 @@ function contentBlocksHtml(spec, content, mode, link, idBase) {
     }).join("");
     return `<div class="${index ? "hidden" : ""}" data-media-block="${idBase}" data-index="${index}">
       <div class="split">
-        <div>${mediaObj.schema !== undefined ? renderSchemaTree(spec, mediaObj.schema, mode, link) : '<div class="faint">Схема не указана</div>'}</div>
-        <div>${exampleSelect}${examplePres || '<div class="faint">Нет примера</div>'}</div>
+        <div>${mediaObj.schema !== undefined ? renderSchemaTree(spec, mediaObj.schema, mode, link) : '<div class="faint">No schema</div>'}</div>
+        <div>${exampleSelect}${examplePres || '<div class="faint">No example</div>'}</div>
       </div>
       ${encodingHtml(mediaObj)}
     </div>`;
@@ -827,13 +827,13 @@ function callbacksSectionHtml(api, entry) {
         <summary><span class="m-tag ${methodClass(cb.method)}">${cb.method}</span><span class="mono">${escapeHtml(cb.path)}</span>${cb.op.summary ? `<span class="muted">${escapeHtml(cb.op.summary)}</span>` : ""}${ICONS.chev}</summary>
         <div class="resp-body">
           ${cb.op.description ? `<div class="md dim small">${renderMarkdown(cb.op.description)}</div>` : ""}
-          ${body ? `<div class="sub-title">Тело</div>${contentBlocksHtml(spec, body.content, "request", schemaLinkFor(), `cb-${name}-${cb.method}`.replace(/[^\w-]/g, "_"))}` : ""}
-          ${responsesSectionHtml(api, cb).replace('<div class="section"><h2>Ответы</h2>', '<div><div class="sub-title">Ожидаемые ответы</div>')}
+          ${body ? `<div class="sub-title">Body</div>${contentBlocksHtml(spec, body.content, "request", schemaLinkFor(), `cb-${name}-${cb.method}`.replace(/[^\w-]/g, "_"))}` : ""}
+          ${responsesSectionHtml(api, cb).replace('<div class="section"><h2>Responses</h2>', '<div><div class="sub-title">Expected responses</div>')}
         </div>
       </details>`;
     }).join("")}`;
   }).join("");
-  return `<div class="section"><h2>Callbacks</h2><div class="faint" style="margin-bottom:8px;">Запросы, которые API отправит в ответ на этот вызов.</div>${blocks}</div>`;
+  return `<div class="section"><h2>Callbacks</h2><div class="faint" style="margin-bottom:8px;">Requests the API sends back in response to this call.</div>${blocks}</div>`;
 }
 
 /* ---------- global headers / cookies drawer ---------- */
@@ -841,10 +841,10 @@ function callbacksSectionHtml(api, entry) {
 function renderKvList(containerId, list, keyPlaceholder) {
   const container = byId(containerId);
   container.innerHTML = list.map((row, index) => `<div class="kv-row" data-index="${index}">
-    <input type="checkbox" ${row.enabled ? "checked" : ""} title="Отправлять в каждом запросе">
+    <input type="checkbox" ${row.enabled ? "checked" : ""} title="Send with every request">
     <input type="text" class="kv-key" placeholder="${keyPlaceholder}" value="${escapeHtml(row.key)}">
     <input type="text" class="kv-val" placeholder="value" value="${escapeHtml(row.value)}">
-    <button class="rm" title="Удалить">✕</button>
+    <button class="rm" title="Remove">✕</button>
   </div>`).join("");
   container.querySelectorAll(".kv-row").forEach((node) => {
     const row = list[Number(node.dataset.index)];
@@ -890,7 +890,7 @@ function initDrawer() {
     saveJson(localStorage, "hs_globals", state.globals);
     closeDrawer();
     renderMain();
-    showToast("Глобальные заголовки и куки сохранены");
+    showToast("Global headers and cookies saved");
   });
   byId("exportGlobalBtn").addEventListener("click", () => {
     downloadBlob(new Blob([prettyJson(state.globals)], { type: "application/json" }), "heavyswag-docs-preset.json");
@@ -907,7 +907,7 @@ function initDrawer() {
         cookies: (data.cookies || []).map((row) => ({ key: row.key, value: row.value, enabled: row.enabled !== false })),
       };
       renderDrawer();
-      showToast("Пресет импортирован — нажмите «Сохранить»");
-    }).catch(() => showToast("Файл не похож на пресет заголовков (JSON с headers / cookies)"));
+      showToast("Preset imported — click “Save”");
+    }).catch(() => showToast("The file isn't a headers preset (JSON with headers / cookies)"));
   });
 }

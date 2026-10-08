@@ -1,4 +1,4 @@
-/* send_request.js — "Попробовать": turning what the user typed into an
+/* send_request.js — "Try it out": turning what the user typed into an
  * HTTP request (OpenAPI parameter serialization: `style` / `explode`),
  * its curl equivalent, and actually sending it with `fetch`.
  *
@@ -265,7 +265,7 @@ function fetchBody(body) {
 /* ---------- curl ---------- */
 
 function buildCurl(req) {
-  const parts = [`curl -X ${req.method} ${shellQuote(req.url || "<адрес сервера>")}`];
+  const parts = [`curl -X ${req.method} ${shellQuote(req.url || "<server URL>")}`];
   for (const [key, value] of req.headers) {
     if (req.body.kind === "multipart" && key === "Content-Type") continue;
     parts.push(`-H ${shellQuote(`${key}: ${value}`)}`);
@@ -309,7 +309,7 @@ async function executeRequest(ctx, panel) {
   const req = buildRequest(ctx);
   const url = absoluteUrl(req.url);
   if (!url) {
-    panel.innerHTML = `<div class="rp-error">Адрес <code>${escapeHtml(req.url || "/")}</code> относительный, а страница открыта как файл — выберите сервер с абсолютным URL или укажите свой адрес.</div>`;
+    panel.innerHTML = `<div class="rp-error">The URL <code>${escapeHtml(req.url || "/")}</code> is relative, but the page was opened as a file — pick a server with an absolute URL, or a custom URL.</div>`;
     return;
   }
 
@@ -327,7 +327,7 @@ async function executeRequest(ctx, panel) {
   if (state.inflight) state.inflight.abort();
   const controller = new AbortController();
   state.inflight = controller;
-  panel.innerHTML = `<div class="rp-head"><span>Отправка ${escapeHtml(req.method)} ${escapeHtml(url)}…</span><button class="pill-btn rp-meta" id="cancelRequestBtn">Отменить</button></div>`;
+  panel.innerHTML = `<div class="rp-head"><span>Sending ${escapeHtml(req.method)} ${escapeHtml(url)}…</span><button class="pill-btn rp-meta" id="cancelRequestBtn">Cancel</button></div>`;
   byId("cancelRequestBtn").addEventListener("click", () => controller.abort());
 
   const started = performance.now();
@@ -339,8 +339,8 @@ async function executeRequest(ctx, panel) {
   } catch (error) {
     if (state.inflight === controller) state.inflight = null;
     panel.innerHTML = error.name === "AbortError"
-      ? '<div class="rp-placeholder">Запрос отменён</div>'
-      : `<div class="rp-error"><b>Запрос не дошёл до ответа.</b><br>${escapeHtml(error.message)}<br><br>Обычно это CORS (сервер не разрешил запросы с этой страницы), недоступный сервер или смешанный контент (страница по https, API по http). Проверьте запрос через curl ниже.</div>`;
+      ? '<div class="rp-placeholder">Request cancelled</div>'
+      : `<div class="rp-error"><b>The request got no response.</b><br>${escapeHtml(error.message)}<br><br>Usually that's CORS (the server doesn't allow requests from this page), an unreachable server, or mixed content (the page on https, the API on http). Try the same request with the curl below.</div>`;
     return;
   }
   if (state.inflight === controller) state.inflight = null;
@@ -355,13 +355,13 @@ async function responseHtml(ctx, req, response, blob, elapsed, skipped) {
   const contentType = response.headers.get("content-type") || "";
   const documented = documentedResponse(ctx.spec, ctx.entry.op, response.status);
   const notes = [];
-  if (!documented) notes.push(`Статус ${response.status} не описан в спецификации`);
-  if (skipped.length) notes.push(`Браузер не принял заголовки: ${skipped.join(", ")}`);
-  if (req.cookies.length) notes.push("Куки не отправлены — браузер не даёт странице задать Cookie (они есть в curl)");
+  if (!documented) notes.push(`Status ${response.status} isn't documented in the specification`);
+  if (skipped.length) notes.push(`The browser refused these headers: ${skipped.join(", ")}`);
+  if (req.cookies.length) notes.push("Cookies weren't sent — a browser doesn't let a page set Cookie (they are in the curl)");
 
   let bodyHtml;
   if (!blob.size) {
-    bodyHtml = '<div class="rp-placeholder">Пустое тело ответа</div>';
+    bodyHtml = '<div class="rp-placeholder">Empty response body</div>';
   } else if (isJsonMedia(contentType) || /json/i.test(contentType)) {
     const text = await blob.text();
     let shown = text;
@@ -370,15 +370,15 @@ async function responseHtml(ctx, req, response, blob, elapsed, skipped) {
       shown = prettyJson(parsed);
       notes.push(...responseSchemaNotes(ctx, documented, contentType, parsed));
     } catch {
-      notes.push("Тело помечено как JSON, но не разбирается");
+      notes.push("The body is labelled JSON but doesn't parse");
     }
     bodyHtml = `<pre>${escapeHtml(shown)}</pre>`;
   } else if (!contentType || isTextMedia(contentType)) {
     bodyHtml = `<pre>${escapeHtml(await blob.text())}</pre>`;
   } else if (/^image\//i.test(contentType)) {
-    bodyHtml = `<div class="rp-placeholder"><img src="${URL.createObjectURL(blob)}" alt="" style="max-width:100%"><br><button class="link-btn" data-download>Скачать</button></div>`;
+    bodyHtml = `<div class="rp-placeholder"><img src="${URL.createObjectURL(blob)}" alt="" style="max-width:100%"><br><button class="link-btn" data-download>Download</button></div>`;
   } else {
-    bodyHtml = `<div class="rp-placeholder">Бинарные данные (${escapeHtml(contentType)}, ${formatBytes(blob.size)}) — <button class="link-btn" data-download>скачать</button></div>`;
+    bodyHtml = `<div class="rp-placeholder">Binary data (${escapeHtml(contentType)}, ${formatBytes(blob.size)}) — <button class="link-btn" data-download>download</button></div>`;
   }
 
   const headerRows = [...response.headers.entries()]
@@ -392,7 +392,7 @@ async function responseHtml(ctx, req, response, blob, elapsed, skipped) {
     </div>
     ${notes.length ? `<div class="callout warn" style="margin:0;border-radius:0;border-width:1px 0 0;">${ICONS.warn}<div>${notes.map(escapeHtml).join("<br>")}</div></div>` : ""}
     ${bodyHtml}
-    <details><summary>Заголовки ответа</summary><div class="headers-preview" style="margin:0 14px 12px;">${headerRows || "Браузер показывает только заголовки, разрешённые через Access-Control-Expose-Headers"}</div></details>`;
+    <details><summary>Response headers</summary><div class="headers-preview" style="margin:0 14px 12px;">${headerRows || "The browser only shows headers allowed by Access-Control-Expose-Headers"}</div></details>`;
 }
 
 /* A JSON response checked against the schema the spec documents for
@@ -406,5 +406,5 @@ function responseSchemaNotes(ctx, documented, contentType, value) {
   if (schema === undefined) return [];
   const errors = validateSchema(ctx.spec, schema, value, "response");
   if (!errors.length) return [];
-  return [`Ответ не соответствует документированной схеме (${documented.key}):`, ...errors.slice(0, 8).map((error) => `• ${error}`)];
+  return [`The response doesn't match the documented schema (${documented.key}):`, ...errors.slice(0, 8).map((error) => `• ${error}`)];
 }

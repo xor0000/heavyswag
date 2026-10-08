@@ -1,6 +1,6 @@
 /* spec.js — reading an OpenAPI 3.1 document: `$ref` resolution,
  * operations and their grouping, example generation and JSON Schema
- * (2020-12) validation of what the user typed into "Попробовать".
+ * (2020-12) validation of what the user typed into "Try it out".
  *
  * Only local references (`#/...`) are resolved — a self-contained page
  * has nothing else to fetch. An unresolvable one is kept as
@@ -353,9 +353,9 @@ const FORMAT_CHECKS = {
   int64: (v) => Number.isInteger(v),
 };
 
-const TYPE_NAMES_RU = {
-  string: "строка", integer: "целое число", number: "число", boolean: "true/false",
-  array: "массив", object: "объект", null: "null",
+const TYPE_NAMES = {
+  string: "a string", integer: "an integer", number: "a number", boolean: "true/false",
+  array: "an array", object: "an object", null: "null",
 };
 
 function matchesType(type, value) {
@@ -376,21 +376,21 @@ function matchesType(type, value) {
 function validateSchema(spec, schema, value, mode = "request", path = "", depth = 0) {
   const errors = [];
   if (schema === undefined || schema === null || schema === true || depth > 24) return errors;
-  const at = path || "значение";
-  if (schema === false) return [`${at}: значение не допускается схемой`];
+  const at = path || "value";
+  if (schema === false) return [`${at}: no value is allowed by the schema`];
 
   const s = deref(spec, schema);
   if (!s || typeof s !== "object" || s.__unresolved) return errors;
 
   const types = schemaTypes(s);
   if (types.length && !types.some((type) => matchesType(type, value))) {
-    return [`${at}: ожидается ${types.map((type) => TYPE_NAMES_RU[type] || type).join(" или ")}`];
+    return [`${at}: expected ${types.map((type) => TYPE_NAMES[type] || type).join(" or ")}`];
   }
   if (s.const !== undefined && !deepEqual(s.const, value)) {
-    errors.push(`${at}: должно быть ${JSON.stringify(s.const)}`);
+    errors.push(`${at}: must be ${JSON.stringify(s.const)}`);
   }
   if (Array.isArray(s.enum) && !s.enum.some((option) => deepEqual(option, value))) {
-    errors.push(`${at}: допустимо одно из ${s.enum.map((option) => JSON.stringify(option)).join(", ")}`);
+    errors.push(`${at}: must be one of ${s.enum.map((option) => JSON.stringify(option)).join(", ")}`);
   }
 
   if (typeof value === "string") validateString(s, value, at, errors);
@@ -400,16 +400,16 @@ function validateSchema(spec, schema, value, mode = "request", path = "", depth 
 
   for (const sub of s.allOf || []) errors.push(...validateSchema(spec, sub, value, mode, path, depth + 1));
   if (Array.isArray(s.anyOf) && !s.anyOf.some((sub) => !validateSchema(spec, sub, value, mode, path, depth + 1).length)) {
-    errors.push(`${at}: не подходит ни под один вариант anyOf`);
+    errors.push(`${at}: matches none of the anyOf variants`);
   }
   if (Array.isArray(s.oneOf)) {
     const matching = s.oneOf.filter((sub) => !validateSchema(spec, sub, value, mode, path, depth + 1).length).length;
     if (matching !== 1) {
-      errors.push(matching ? `${at}: подходит под ${matching} варианта oneOf, а должен ровно под один` : `${at}: не подходит ни под один вариант oneOf`);
+      errors.push(matching ? `${at}: matches ${matching} oneOf variants, must match exactly one` : `${at}: matches none of the oneOf variants`);
     }
   }
   if (s.not !== undefined && !validateSchema(spec, s.not, value, mode, path, depth + 1).length) {
-    errors.push(`${at}: значение запрещено схемой (not)`);
+    errors.push(`${at}: the value is forbidden by the schema (not)`);
   }
   if (s.if !== undefined) {
     const branch = validateSchema(spec, s.if, value, mode, path, depth + 1).length ? s.else : s.then;
@@ -420,18 +420,18 @@ function validateSchema(spec, schema, value, mode = "request", path = "", depth 
 
 function validateString(s, value, at, errors) {
   const length = [...value].length;
-  if (typeof s.minLength === "number" && length < s.minLength) errors.push(`${at}: минимум ${s.minLength} символов`);
-  if (typeof s.maxLength === "number" && length > s.maxLength) errors.push(`${at}: максимум ${s.maxLength} символов`);
+  if (typeof s.minLength === "number" && length < s.minLength) errors.push(`${at}: at least ${s.minLength} characters`);
+  if (typeof s.maxLength === "number" && length > s.maxLength) errors.push(`${at}: at most ${s.maxLength} characters`);
   if (typeof s.pattern === "string") {
     let regex = null;
     try { regex = new RegExp(s.pattern, "u"); } catch {
       try { regex = new RegExp(s.pattern); } catch { regex = null; }
     }
-    if (regex && !regex.test(value)) errors.push(`${at}: не соответствует шаблону ${s.pattern}`);
+    if (regex && !regex.test(value)) errors.push(`${at}: doesn't match the pattern ${s.pattern}`);
   }
   const check = FORMAT_CHECKS[s.format];
   if (check && typeof value === "string" && !["int32", "int64"].includes(s.format) && !check(value)) {
-    errors.push(`${at}: неверный формат ${s.format}`);
+    errors.push(`${at}: not a valid ${s.format}`);
   }
 }
 
@@ -439,26 +439,26 @@ function validateNumber(s, value, at, errors) {
   // 3.1 uses numeric `exclusiveMinimum`; 3.0's boolean form still turns up.
   const exclusiveMin = typeof s.exclusiveMinimum === "number" ? s.exclusiveMinimum : (s.exclusiveMinimum === true ? s.minimum : undefined);
   const exclusiveMax = typeof s.exclusiveMaximum === "number" ? s.exclusiveMaximum : (s.exclusiveMaximum === true ? s.maximum : undefined);
-  if (typeof s.minimum === "number" && s.exclusiveMinimum !== true && value < s.minimum) errors.push(`${at}: не меньше ${s.minimum}`);
-  if (typeof s.maximum === "number" && s.exclusiveMaximum !== true && value > s.maximum) errors.push(`${at}: не больше ${s.maximum}`);
-  if (exclusiveMin !== undefined && value <= exclusiveMin) errors.push(`${at}: строго больше ${exclusiveMin}`);
-  if (exclusiveMax !== undefined && value >= exclusiveMax) errors.push(`${at}: строго меньше ${exclusiveMax}`);
+  if (typeof s.minimum === "number" && s.exclusiveMinimum !== true && value < s.minimum) errors.push(`${at}: must be ≥ ${s.minimum}`);
+  if (typeof s.maximum === "number" && s.exclusiveMaximum !== true && value > s.maximum) errors.push(`${at}: must be ≤ ${s.maximum}`);
+  if (exclusiveMin !== undefined && value <= exclusiveMin) errors.push(`${at}: must be > ${exclusiveMin}`);
+  if (exclusiveMax !== undefined && value >= exclusiveMax) errors.push(`${at}: must be < ${exclusiveMax}`);
   if (typeof s.multipleOf === "number" && s.multipleOf > 0) {
     const ratio = value / s.multipleOf;
-    if (Math.abs(ratio - Math.round(ratio)) > 1e-9) errors.push(`${at}: должно быть кратно ${s.multipleOf}`);
+    if (Math.abs(ratio - Math.round(ratio)) > 1e-9) errors.push(`${at}: must be a multiple of ${s.multipleOf}`);
   }
   if (FORMAT_CHECKS[s.format] && ["int32", "int64"].includes(s.format) && !FORMAT_CHECKS[s.format](value)) {
-    errors.push(`${at}: не помещается в ${s.format}`);
+    errors.push(`${at}: doesn't fit in ${s.format}`);
   }
 }
 
 function validateArray(spec, s, value, mode, path, depth, errors) {
-  const at = path || "значение";
-  if (typeof s.minItems === "number" && value.length < s.minItems) errors.push(`${at}: минимум ${s.minItems} элементов`);
-  if (typeof s.maxItems === "number" && value.length > s.maxItems) errors.push(`${at}: максимум ${s.maxItems} элементов`);
+  const at = path || "value";
+  if (typeof s.minItems === "number" && value.length < s.minItems) errors.push(`${at}: at least ${s.minItems} items`);
+  if (typeof s.maxItems === "number" && value.length > s.maxItems) errors.push(`${at}: at most ${s.maxItems} items`);
   if (s.uniqueItems) {
     const seen = new Set(value.map(stableStringify));
-    if (seen.size !== value.length) errors.push(`${at}: элементы должны быть уникальны`);
+    if (seen.size !== value.length) errors.push(`${at}: items must be unique`);
   }
   const prefix = Array.isArray(s.prefixItems) ? s.prefixItems : [];
   value.forEach((item, index) => {
@@ -466,7 +466,7 @@ function validateArray(spec, s, value, mode, path, depth, errors) {
     if (index < prefix.length) {
       errors.push(...validateSchema(spec, prefix[index], item, mode, itemPath, depth + 1));
     } else if (s.items === false) {
-      errors.push(`${itemPath}: лишний элемент`);
+      errors.push(`${itemPath}: unexpected item`);
     } else if (s.items !== undefined) {
       errors.push(...validateSchema(spec, s.items, item, mode, itemPath, depth + 1));
     }
@@ -474,17 +474,17 @@ function validateArray(spec, s, value, mode, path, depth, errors) {
 }
 
 function validateObject(spec, s, value, mode, path, depth, errors) {
-  const at = path || "значение";
+  const at = path || "value";
   const properties = s.properties || {};
   for (const name of s.required || []) {
     if (value[name] !== undefined) continue;
     // A read-only property is sent by the server, never by the client.
     if (mode === "request" && properties[name] && !isPropertyVisible(spec, properties[name], "request")) continue;
-    errors.push(`${joinPath(path, name)}: обязательное поле`);
+    errors.push(`${joinPath(path, name)}: required field`);
   }
   const keys = Object.keys(value);
-  if (typeof s.minProperties === "number" && keys.length < s.minProperties) errors.push(`${at}: минимум ${s.minProperties} полей`);
-  if (typeof s.maxProperties === "number" && keys.length > s.maxProperties) errors.push(`${at}: максимум ${s.maxProperties} полей`);
+  if (typeof s.minProperties === "number" && keys.length < s.minProperties) errors.push(`${at}: at least ${s.minProperties} fields`);
+  if (typeof s.maxProperties === "number" && keys.length > s.maxProperties) errors.push(`${at}: at most ${s.maxProperties} fields`);
 
   const patterns = Object.entries(s.patternProperties || {}).map(([pattern, sub]) => {
     try { return [new RegExp(pattern, "u"), sub]; } catch { return null; }
@@ -504,7 +504,7 @@ function validateObject(spec, s, value, mode, path, depth, errors) {
       }
     }
     if (matched) continue;
-    if (s.additionalProperties === false) errors.push(`${keyPath}: неизвестное поле`);
+    if (s.additionalProperties === false) errors.push(`${keyPath}: unknown field`);
     else if (s.additionalProperties && typeof s.additionalProperties === "object") {
       errors.push(...validateSchema(spec, s.additionalProperties, value[key], mode, keyPath, depth + 1));
     }

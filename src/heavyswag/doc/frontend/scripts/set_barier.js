@@ -1,4 +1,4 @@
-/* set_barier.js — "Авторизация": credentials for the document's
+/* set_barier.js — "Authorize": credentials for the document's
  * `components.securitySchemes`, and applying them to a request according
  * to the operation's `security` requirements.
  *
@@ -24,7 +24,7 @@ function schemeTypeLabel(scheme) {
     const name = scheme.scheme || "http";
     return `HTTP ${name}${scheme.bearerFormat ? ` (${scheme.bearerFormat})` : ""}`;
   }
-  if (scheme.type === "apiKey") return `API key · ${scheme.in} «${scheme.name}»`;
+  if (scheme.type === "apiKey") return `API key · ${scheme.in} “${scheme.name}”`;
   if (scheme.type === "oauth2") return "OAuth 2.0";
   if (scheme.type === "openIdConnect") return "OpenID Connect";
   if (scheme.type === "mutualTLS") return "Mutual TLS";
@@ -70,7 +70,7 @@ function renderAuthModal() {
   const body = byId("authModalBody");
   const schemes = securitySchemesOf(spec);
   body.innerHTML = schemes.map(([name, scheme]) => authCardHtml(name, scheme)).join("")
-    || '<div class="faint">В документе нет securitySchemes.</div>';
+    || '<div class="faint">The document has no securitySchemes.</div>';
 }
 
 function authCardHtml(name, scheme) {
@@ -83,16 +83,16 @@ function authCardHtml(name, scheme) {
 
   let inputs = "";
   if (kind === "basic") inputs = field("username", "username") + field("password", "password", "password");
-  else if (kind === "apiKey") inputs = field("value", `значение ${scheme.name}`, "password");
+  else if (kind === "apiKey") inputs = field("value", `${scheme.name} value`, "password");
   else if (kind === "token") inputs = field("token", scheme.type === "http" && (scheme.scheme || "").toLowerCase() !== "bearer" ? `${scheme.scheme} credentials` : "access token", "password");
-  else inputs = '<div class="faint">Сертификат клиента выбирает сам браузер — со страницы его не задать.</div>';
+  else inputs = '<div class="faint">The browser itself picks the client certificate — it can\'t be set from the page.</div>';
 
   return `<div class="auth-card ${authorized ? "authorized" : ""}">
     <div class="auth-card-head">${authorized ? ICONS.unlock : ICONS.lock}<b>${escapeHtml(name)}</b><span class="badge neutral">${escapeHtml(schemeTypeLabel(scheme))}</span></div>
     ${scheme.description ? `<div class="md dim small">${renderMarkdown(scheme.description)}</div>` : ""}
     ${oauthDetailsHtml(scheme)}
     ${inputs}
-    ${kind === "token" && scheme.type !== "http" ? '<div class="faint">Получите токен у провайдера и вставьте его — он уйдёт как <code>Authorization: Bearer …</code>.</div>' : ""}
+    ${kind === "token" && scheme.type !== "http" ? '<div class="faint">Get a token from the provider and paste it here — it\'s sent as <code>Authorization: Bearer …</code>.</div>' : ""}
   </div>`;
 }
 
@@ -120,7 +120,7 @@ function saveAuthFromModal() {
   closeAuthModal();
   updateAuthButton();
   renderMain();
-  showToast("Данные авторизации сохранены до закрытия вкладки");
+  showToast("Credentials saved until the tab is closed");
 }
 
 function logoutAll() {
@@ -129,7 +129,7 @@ function logoutAll() {
   renderAuthModal();
   updateAuthButton();
   renderMain();
-  showToast("Авторизация сброшена");
+  showToast("Credentials cleared");
 }
 
 function initAuth() {
@@ -190,13 +190,13 @@ function capitalizeScheme(name) {
   return name.toLowerCase() === "bearer" ? "Bearer" : name;
 }
 
-/* Requirements as readable text: alternatives joined by "или",
+/* Requirements as readable text: alternatives joined by "or",
  * schemes within one by "+", scopes in brackets. */
 function describeRequirements(requirements) {
   return requirements.map((alt) => {
     const names = Object.entries(alt).map(([name, scopes]) => (
       scopes && scopes.length ? `${name} [${scopes.join(", ")}]` : name
     ));
-    return names.length ? names.join(" + ") : "без авторизации";
-  }).join(" или ");
+    return names.length ? names.join(" + ") : "no authorization";
+  }).join(" or ");
 }

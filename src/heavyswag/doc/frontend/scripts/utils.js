@@ -79,11 +79,11 @@ function writeClipboard(text) {
 function copyText(text, okMessage) {
   writeClipboard(text)
     .then(() => showToast(okMessage))
-    .catch(() => showToast("Не удалось скопировать: нет доступа к буферу обмена"));
+    .catch(() => showToast("Couldn't copy: no access to the clipboard"));
 }
 
 /* Copy, and confirm right where the click was: the element flashes and
- * a small "Скопировано" floats up from it and fades. */
+ * a small "Copied" floats up from it and fades. */
 function copyWithFlash(element, text) {
   writeClipboard(text).then(() => {
     element.classList.remove("copied");
@@ -93,12 +93,12 @@ function copyWithFlash(element, text) {
     const rect = element.getBoundingClientRect();
     const tip = document.createElement("div");
     tip.className = "copy-tip";
-    tip.textContent = "Скопировано";
+    tip.textContent = "Copied";
     tip.style.left = `${rect.left + rect.width / 2}px`;
     tip.style.top = `${rect.top}px`;
     document.body.appendChild(tip);
     setTimeout(() => tip.remove(), 900);
-  }).catch(() => showToast("Не удалось скопировать: нет доступа к буферу обмена"));
+  }).catch(() => showToast("Couldn't copy: no access to the clipboard"));
 }
 
 function downloadBlob(blob, filename) {
@@ -170,16 +170,6 @@ function base64Utf8(text) {
   let binary = "";
   bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
   return btoa(binary);
-}
-
-/* `1 строка`, `3 строки`, `11 строк`. */
-function pluralRu(count, one, few, many) {
-  const tens = count % 100;
-  const units = count % 10;
-  if (tens >= 11 && tens <= 14) return many;
-  if (units === 1) return one;
-  if (units >= 2 && units <= 4) return few;
-  return many;
 }
 
 function formatBytes(size) {
