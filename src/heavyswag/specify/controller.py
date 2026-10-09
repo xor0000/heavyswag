@@ -1,5 +1,5 @@
 from collections.abc import Awaitable, Callable
-from typing import Concatenate
+from typing import Any, Concatenate
 
 from heavyswag.constants import ALLOWED_TYPES
 from heavyswag.specify.request import Request
@@ -16,4 +16,15 @@ type Controller[
     **P,
 ] = Callable[
     Concatenate[Request, InDTO, P], Awaitable[OutDTO | Response[OutDTO]]  # type: ignore[type-var]
+]
+
+# The hook a DI container plugs into (`HeavySwag(di=...)`). HeavySwag only
+# ever supplies `(request, dto)`; whatever else a controller declares —
+# none or any number of parameters — is none of the framework's business,
+# so the wrapper turns the controller into a plain `(request, dto)` call.
+# Only the call is replaced: DTOs and docs are still read off the original
+# controller's own hints.
+type ControllerWrapper = Callable[
+    [Controller[Any, Any, Any]],
+    Callable[[Request, Any], Awaitable[Any]],
 ]
