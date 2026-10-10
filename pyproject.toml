@@ -16,7 +16,7 @@ authors = [
 ]
 
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["httpx>=0.28.1"]
 
 keywords = ["http", "http/1", "http/2", "http/3", "web", "framework"]
 classifiers = [
