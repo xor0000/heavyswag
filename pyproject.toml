@@ -3,7 +3,7 @@ module-root = "src"
 
 [project]
 name = "heavyswag"
-version = "0.1.0"
+version = "0.1.1"
 description = "The hype python web framework"
 
 readme = "README.md"
@@ -117,3 +117,10 @@ indent-style = "space"
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
+# The documentation page's sources — read at runtime by
+# `heavyswag.doc.docs_page`, so they have to ship in the wheel.
+"heavyswag.doc" = [
+    "frontend/*.html",
+    "frontend/styles/*.css",
+    "frontend/scripts/*.js",
+]

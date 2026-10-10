@@ -1,16 +1,37 @@
+import json
 from datetime import datetime
-from typing import NamedTuple
-from uuid import UUID
+from enum import IntEnum, StrEnum
+from typing import Annotated, NamedTuple
+from uuid import UUID, uuid4
 
 import pytest
 
-from heavyswag._internal._serializer import Serializer
+from heavyswag._internal._serializer import Serializer, to_jsonable
 from heavyswag.constants import HttpMethod
-from heavyswag.errors import SerializationError
+from heavyswag.errors import SerializationError, ValidationError
 from heavyswag.specify.cookie import Cookie, SameSite
 from heavyswag.specify.request import Body, Preambule, Query, Request
 from heavyswag.specify.response import Response
 from tests.unit.factories.http import RequestFactory
+
+
+class _RecordingValidator:
+    """A minimal stand-in for `StrField`/`IntField`/... — duck-typed on
+    `validate`, same as `_validate_field_value` itself, so these tests
+    don't depend on any concrete `heavyswag.validation` type.
+    """
+
+    def __init__(self) -> None:
+        self.seen: list[object] = []
+
+    def validate(self, value: object) -> None:
+        self.seen.append(value)
+
+
+class _RaisingValidator:
+    def validate(self, value: object) -> None:  # noqa: ARG002
+        msg = "bad value"
+        raise ValidationError(msg)
 
 
 def test_parse_http_without_header_and_cookies_and_body() -> None:
@@ -153,6 +174,36 @@ class _TwoBodyFields(NamedTuple):
     b: Body[str]
 
 
+class _OptionalBody(NamedTuple):
+    name: Body[str] | None
+
+
+class _OptionalQuery(NamedTuple):
+    flag: Query[bool] | None
+
+
+class _QueryScalarTypes(NamedTuple):
+    as_str: Query[str]
+    as_int: Query[int]
+    as_float: Query[float]
+    as_bool: Query[bool]
+    as_uuid: Query[UUID]
+    as_datetime: Query[datetime]
+    as_bytes: Query[bytes]
+
+
+class _QueryListStr(NamedTuple):
+    tags: Query[list[str]]
+
+
+class _QueryListInt(NamedTuple):
+    ids: Query[list[int]]
+
+
+class _OptionalQueryListStr(NamedTuple):
+    tags: Query[list[str]] | None
+
+
 def test_serialize_dto_path_param() -> None:
     serializer = Serializer(b"")
 
@@ -164,9 +215,121 @@ def test_serialize_dto_path_param() -> None:
 def test_serialize_dto_query_param() -> None:
     serializer = Serializer(b"")
 
-    dto = serializer.serialize_dto(_QueryOnly, {}, {"flag": "true"})
+    dto = serializer.serialize_dto(_QueryOnly, {}, {"flag": ["true"]})
 
-    assert dto == _QueryOnly(flag=True)  # type: ignore[arg-type]
+    assert dto == _QueryOnly(flag=True)
+
+
+def test_serialize_dto_query_supports_scalar_types() -> None:
+    serializer = Serializer(b"")
+    query_params = {
+        "as_str": ["hello"],
+        "as_int": ["5"],
+        "as_float": ["5.5"],
+        "as_bool": ["true"],
+        "as_uuid": ["12345678-1234-5678-1234-567812345678"],
+        "as_datetime": ["2026-01-01T12:00:00"],
+        "as_bytes": ["hi"],
+    }
+
+    dto = serializer.serialize_dto(_QueryScalarTypes, {}, query_params)
+
+    assert dto == _QueryScalarTypes(
+        as_str="hello",
+        as_int=5,
+        as_float=5.5,
+        as_bool=True,
+        as_uuid=UUID("12345678-1234-5678-1234-567812345678"),
+        as_datetime=datetime(2026, 1, 1, 12, 0, 0),  # noqa: DTZ001
+        as_bytes=b"hi",
+    )
+
+
+def test_serialize_dto_query_scalar_field_rejects_repeated_key() -> None:
+    """`?a="123"&a="123"&...` against a non-list `Query[X]` field
+    has no single sane value to pick, so it's a bad request instead
+    of silently keeping the first or last one.
+    """
+    serializer = Serializer(b"")
+    query_params = serializer.parse_query(
+        'a="123"&a="123"&a="123"&a="123"&a="123"'
+    )
+
+    class _ScalarField(NamedTuple):
+        a: Query[str]
+
+    with pytest.raises(SerializationError, match="repeated 5 times"):
+        serializer.serialize_dto(_ScalarField, {}, query_params)
+
+
+def test_serialize_dto_query_list_str_collects_repeated_key() -> None:
+    """`?a="123"&a="123"&...` against `Query[list[str]]` collects
+    every repeat, each coerced to `str`.
+    """
+    serializer = Serializer(b"")
+    query_params = serializer.parse_query(
+        'a="123"&a="123"&a="123"&a="123"&a="123"'
+    )
+
+    class _ListField(NamedTuple):
+        a: Query[list[str]]
+
+    dto = serializer.serialize_dto(_ListField, {}, query_params)
+
+    assert dto == _ListField(a=['"123"'] * 5)
+
+
+def test_serialize_dto_query_list_int_collects_repeated_key_coerced() -> None:
+    """The same repeated key against `Query[list[int]]` coerces
+    each item to `int` instead of leaving them as strings.
+    """
+    serializer = Serializer(b"")
+    query_params = serializer.parse_query(
+        "ids=123&ids=123&ids=123&ids=123&ids=123"
+    )
+
+    dto = serializer.serialize_dto(_QueryListInt, {}, query_params)
+
+    assert dto == _QueryListInt(ids=[123, 123, 123, 123, 123])
+
+
+def test_serialize_dto_query_list_str_single_value_is_still_a_list() -> None:
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(_QueryListStr, {}, {"tags": ["value"]})
+
+    assert dto == _QueryListStr(tags=["value"])
+
+
+def test_serialize_dto_query_list_float_coerces_each_item() -> None:
+    class _ListFloat(NamedTuple):
+        values: Query[list[float]]
+
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(
+        _ListFloat, {}, {"values": ["1.5", "2.5", "3.5"]}
+    )
+
+    assert dto == _ListFloat(values=[1.5, 2.5, 3.5])
+
+
+def test_serialize_dto_optional_query_list_str_present_value() -> None:
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(
+        _OptionalQueryListStr, {}, {"tags": ["a", "b"]}
+    )
+
+    assert dto == _OptionalQueryListStr(tags=["a", "b"])
+
+
+def test_serialize_dto_optional_query_list_str_missing_key_is_none() -> None:
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(_OptionalQueryListStr, {}, {})
+
+    assert dto == _OptionalQueryListStr(tags=None)
 
 
 def test_serialize_dto_body_field() -> None:
@@ -174,15 +337,15 @@ def test_serialize_dto_body_field() -> None:
 
     dto = serializer.serialize_dto(_BodyOnly, {}, {})
 
-    assert dto == _BodyOnly(name="max")  # type: ignore[arg-type]
+    assert dto == _BodyOnly(name="max")
 
 
 def test_serialize_dto_mixed_fields() -> None:
     serializer = Serializer(b'{"name": "max"}')
 
-    dto = serializer.serialize_dto(_Mixed, {"item_id": "5"}, {"flag": "1"})
+    dto = serializer.serialize_dto(_Mixed, {"item_id": "5"}, {"flag": ["1"]})
 
-    expected = _Mixed(item_id=5, flag=True, name="max")  # type: ignore[arg-type]
+    expected = _Mixed(item_id=5, flag=True, name="max")
     assert dto == expected
 
 
@@ -207,12 +370,98 @@ def test_serialize_dto_missing_body_field_raises() -> None:
         serializer.serialize_dto(_BodyOnly, {}, {})
 
 
+def test_serialize_dto_optional_body_explicit_null_is_none() -> None:
+    serializer = Serializer(b'{"name": null}')
+
+    dto = serializer.serialize_dto(_OptionalBody, {}, {})
+
+    assert dto == _OptionalBody(name=None)
+
+
+def test_serialize_dto_optional_body_missing_key_raises() -> None:
+    serializer = Serializer(b"{}")
+
+    with pytest.raises(SerializationError, match="Missing field 'name'"):
+        serializer.serialize_dto(_OptionalBody, {}, {})
+
+
+def test_serialize_dto_optional_body_present_value_is_coerced() -> None:
+    serializer = Serializer(b'{"name": "max"}')
+
+    dto = serializer.serialize_dto(_OptionalBody, {}, {})
+
+    assert dto == _OptionalBody(name="max")
+
+
+def test_serialize_dto_unknown_body_key_raises() -> None:
+    serializer = Serializer(b'{"name": "max", "role": "admin"}')
+
+    with pytest.raises(
+        SerializationError, match="Unknown body field\\(s\\) 'role'"
+    ):
+        serializer.serialize_dto(_BodyOnly, {}, {})
+
+
+def test_serialize_dto_unknown_body_keys_are_all_reported() -> None:
+    serializer = Serializer(b'{"name": "max", "role": "admin", "age": 1}')
+
+    with pytest.raises(
+        SerializationError, match="Unknown body field\\(s\\) 'age', 'role'"
+    ):
+        serializer.serialize_dto(_BodyOnly, {}, {})
+
+
+def test_serialize_dto_unknown_nested_body_key_raises() -> None:
+    class _Inner(NamedTuple):
+        name: Body[str]
+
+    class _Outer(NamedTuple):
+        inner: Body[_Inner]
+
+    serializer = Serializer(b'{"inner": {"name": "max", "role": "admin"}}')
+
+    with pytest.raises(
+        SerializationError, match="Unknown body field\\(s\\) 'role'"
+    ):
+        serializer.serialize_dto(_Outer, {}, {})
+
+
+def test_serialize_dto_unknown_query_key_is_ignored() -> None:
+    """Unlike a body key, an extra query parameter is not an error —
+    query strings routinely carry values meant for something other
+    than the DTO.
+    """
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(
+        _QueryOnly, {}, {"flag": ["true"], "utm_source": ["mail"]}
+    )
+
+    assert dto == _QueryOnly(flag=True)
+
+
+def test_serialize_dto_optional_query_missing_key_is_none() -> None:
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(_OptionalQuery, {}, {})
+
+    assert dto == _OptionalQuery(flag=None)
+
+
+def test_serialize_dto_optional_query_present_value_is_coerced() -> None:
+    serializer = Serializer(b"")
+
+    dto = serializer.serialize_dto(_OptionalQuery, {}, {"flag": ["true"]})
+
+    assert dto == _OptionalQuery(flag=True)
+
+
 def test_serialize_dto_parses_body_once_for_multiple_fields() -> None:
     serializer = Serializer(b'{"a": "1", "b": "2"}')
 
     dto = serializer.serialize_dto(_TwoBodyFields, {}, {})
 
-    assert dto == _TwoBodyFields(a="1", b="2")  # type: ignore[arg-type]
+    assert dto == _TwoBodyFields(a="1", b="2")
 
 
 def test_parse_query_empty() -> None:
@@ -224,19 +473,25 @@ def test_parse_query_empty() -> None:
 def test_parse_query_single_pair() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.parse_query("a=1") == {"a": "1"}
+    assert serializer.parse_query("a=1") == {"a": ["1"]}
 
 
 def test_parse_query_multiple_pairs() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.parse_query("a=1&b=2") == {"a": "1", "b": "2"}
+    assert serializer.parse_query("a=1&b=2") == {"a": ["1"], "b": ["2"]}
 
 
 def test_parse_query_pair_without_value() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.parse_query("flag") == {"flag": ""}
+    assert serializer.parse_query("flag") == {"flag": [""]}
+
+
+def test_parse_query_repeated_key_collects_all_values() -> None:
+    serializer = Serializer(b"")
+
+    assert serializer.parse_query("a=1&a=2&a=3") == {"a": ["1", "2", "3"]}
 
 
 def test_wrap_response_passthrough() -> None:
@@ -459,6 +714,23 @@ def test_coerce_generic_origin_passthrough() -> None:
     assert serializer._coerce([1, 2], list[int]) == [1, 2]  # noqa: SLF001
 
 
+def test_coerce_namedtuple_target_rejects_non_dict_value() -> None:
+    """A `Body[NamedTuple]` field's JSON value has to be an object —
+    `validate_dto_type` guarantees the *type* is nestable, but a
+    client can still send a string, number, or list where an object
+    was expected, and that's a per-request `SerializationError`, not
+    something the assembly-time shape check could have caught.
+    """
+
+    class _Inner(NamedTuple):
+        value: Body[str]
+
+    serializer = Serializer(b"")
+
+    with pytest.raises(SerializationError, match="Cannot coerce"):
+        serializer._coerce("not-an-object", _Inner)  # noqa: SLF001
+
+
 @pytest.mark.parametrize(
     ("raw", "target", "expected"),
     [
@@ -526,3 +798,273 @@ def test_coerce_str_unsupported_type_raises() -> None:
 
     with pytest.raises(SerializationError, match="Unsupported target type"):
         serializer._coerce_str("x", list)  # noqa: SLF001
+
+
+def test_to_jsonable_set_of_scalars() -> None:
+    serializer = Serializer(b"")
+
+    result = serializer._to_jsonable({1, 2, 3})  # noqa: SLF001
+
+    assert isinstance(result, list)
+    assert set(result) == {1, 2, 3}
+
+
+def test_to_jsonable_namedtuple_with_nested_list_tuple_and_set() -> None:
+    class Bag(NamedTuple):
+        tags: list[str]
+        ids: tuple[int, ...]
+        flags: set[str]
+
+    serializer = Serializer(b"")
+    value = Bag(tags=["a", "b"], ids=(1, 2), flags={"x", "y"})
+
+    result = serializer._to_jsonable(value)  # noqa: SLF001
+
+    assert result["tags"] == ["a", "b"]
+    assert result["ids"] == [1, 2]
+    assert isinstance(result["flags"], list)
+    assert set(result["flags"]) == {"x", "y"}
+
+
+def test_to_jsonable_deeply_nested_mixed_structure() -> None:
+    class Leaf(NamedTuple):
+        id: UUID
+        tags: set[str]
+
+    serializer = Serializer(b"")
+    leaf_id = uuid4()
+    value = {
+        "resorse": "page",
+        "kind": "Collection",
+        "items": [
+            Leaf(id=leaf_id, tags={"a"}),
+            (1, 2, {"nested": True}),
+        ],
+    }
+
+    result = serializer._to_jsonable(value)  # noqa: SLF001
+
+    assert result["resorse"] == "page"
+    assert result["kind"] == "Collection"
+    assert result["items"][0] == {"id": str(leaf_id), "tags": ["a"]}
+    assert result["items"][1] == [1, 2, {"nested": True}]
+
+
+def test_render_body_collection_response_shape() -> None:
+    class Item(NamedTuple):
+        id: int
+        labels: set[str]
+
+    serializer = Serializer(b"")
+    body = {
+        "resorse": "page",
+        "kind": "Collection",
+        "items": [Item(id=1, labels={"a", "b"}), Item(id=2, labels=set())],
+    }
+
+    rendered = json.loads(serializer.render_body(body))
+
+    assert rendered["resorse"] == "page"
+    assert rendered["kind"] == "Collection"
+    assert rendered["items"][0]["id"] == 1
+    assert set(rendered["items"][0]["labels"]) == {"a", "b"}
+    assert rendered["items"][1] == {"id": 2, "labels": []}
+
+
+def test_render_body_list_of_namedtuples_with_nested_collections() -> None:
+    class Row(NamedTuple):
+        name: str
+        scores: tuple[int, ...]
+        unique_tags: set[str]
+
+    serializer = Serializer(b"")
+    body = [
+        Row(name="a", scores=(1, 2, 3), unique_tags={"x"}),
+        Row(name="b", scores=(), unique_tags=set()),
+    ]
+
+    rendered = json.loads(serializer.render_body(body))
+
+    assert rendered[0]["name"] == "a"
+    assert rendered[0]["scores"] == [1, 2, 3]
+    assert set(rendered[0]["unique_tags"]) == {"x"}
+    assert rendered[1] == {"name": "b", "scores": [], "unique_tags": []}
+
+
+def test_serialize_dto_supports_deeply_nested_namedtuple_body() -> None:
+    """A `Body[NamedTuple]` field is resolved recursively: `serialize_dto`
+    doesn't stop at the outermost object, it keeps unwrapping into the
+    nested `NamedTuple` type until it bottoms out at `Body[str]` —
+    seven levels down for `G`.
+    """
+
+    class A(NamedTuple):
+        value: Body[str]
+
+    class B(NamedTuple):
+        value: Body[A]
+
+    class C(NamedTuple):
+        value: Body[B]
+
+    class D(NamedTuple):
+        value: Body[C]
+
+    class E(NamedTuple):
+        value: Body[D]
+
+    class F(NamedTuple):
+        value: Body[E]
+
+    class G(NamedTuple):
+        value: Body[F]
+
+    nested: object = "leaf"
+    for _ in range(7):
+        nested = {"value": nested}
+
+    serializer = Serializer(json.dumps(nested).encode())
+
+    dto = serializer.serialize_dto(G, {}, {})
+
+    assert dto == G(
+        value=F(value=E(value=D(value=C(value=B(value=A(value="leaf"))))))
+    )
+
+
+def test_serialize_dto_calls_validate_on_metadata() -> None:
+    validator = _RecordingValidator()
+
+    class _Dto(NamedTuple):
+        name: Annotated[Body[str], validator]
+
+    serializer = Serializer(b'{"name": "max"}')
+    serializer.serialize_dto(_Dto, {}, {})
+
+    assert validator.seen == ["max"]
+
+
+def test_serialize_dto_skips_validate_for_none_value() -> None:
+    validator = _RecordingValidator()
+
+    class _Dto(NamedTuple):
+        name: Annotated[Body[str], validator] | None
+
+    serializer = Serializer(b'{"name": null}')
+    serializer.serialize_dto(_Dto, {}, {})
+
+    assert validator.seen == []
+
+
+def test_serialize_dto_propagates_validation_error() -> None:
+    class _Dto(NamedTuple):
+        name: Annotated[Body[str], _RaisingValidator()]
+
+    serializer = Serializer(b'{"name": "max"}')
+
+    with pytest.raises(ValidationError, match="bad value"):
+        serializer.serialize_dto(_Dto, {}, {})
+
+
+class _Color(StrEnum):
+    RED = "red"
+    BLUE = "blue"
+
+
+class _Level(IntEnum):
+    LOW = 1
+    HIGH = 2
+
+
+class _EnumFields(NamedTuple):
+    color: _Color
+    level: Query[_Level]
+    colors: Query[list[_Color]]
+    body_color: Body[_Color]
+    body_level: Body[_Level]
+
+
+def test_serialize_dto_coerces_enums_from_every_location() -> None:
+    serializer = Serializer(
+        RequestFactory.build(
+            method="POST", body={"body_color": "blue", "body_level": 2}
+        )
+    )
+    serializer.serialize_preambule()
+    serializer.serialize_request()
+
+    dto = serializer.serialize_dto(
+        _EnumFields,
+        {"color": "red"},
+        {"level": ["1"], "colors": ["red", "blue"]},
+    )
+
+    assert dto == _EnumFields(
+        color=_Color.RED,
+        level=_Level.LOW,
+        colors=[_Color.RED, _Color.BLUE],
+        body_color=_Color.BLUE,
+        body_level=_Level.HIGH,
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "target"),
+    [
+        ("green", _Color),
+        (1, _Color),
+        ("3", _Level),
+        ("high", _Level),
+        (True, _Level),
+    ],
+)
+def test_coerce_enum_rejects_unknown_value(
+    value: object, target: type
+) -> None:
+    serializer = Serializer(b"")
+
+    with pytest.raises(SerializationError, match="expected one of"):
+        serializer._coerce(value, target)  # noqa: SLF001
+
+
+@pytest.mark.parametrize(
+    ("body", "content_type"),
+    [
+        ("ok", b"text/plain; charset=utf-8"),
+        (b"raw", b"application/octet-stream"),
+        ({"a": 1}, b"application/json"),
+        ([1, 2], b"application/json"),
+    ],
+)
+def test_render_sets_content_type_from_body(
+    body: object, content_type: bytes
+) -> None:
+    response: Response[object] = Response()  # type: ignore[type-var]
+    response.set_body(body)
+
+    headers, _ = Serializer(b"").render(response)
+
+    assert (b"content-type", content_type) in headers
+
+
+def test_render_keeps_explicit_content_type() -> None:
+    response: Response[str] = Response()
+    response.set_body("<p>hi</p>")
+    response.attach_header("Content-Type", "text/html")
+
+    headers, _ = Serializer(b"").render(response)
+
+    content_types = [v for k, v in headers if k.lower() == b"content-type"]
+    assert content_types == [b"text/html"]
+
+
+def test_render_no_content_type_for_empty_body() -> None:
+    headers, _ = Serializer(b"").render(Response())
+
+    assert not any(name == b"content-type" for name, _ in headers)
+
+
+def test_to_jsonable_enum() -> None:
+    assert to_jsonable(_Color.RED) == "red"
+    assert to_jsonable(_Level.HIGH) == 2  # noqa: PLR2004
+    assert to_jsonable([_Color.BLUE]) == ["blue"]

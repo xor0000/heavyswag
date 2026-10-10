@@ -1,0 +1,471 @@
+from datetime import datetime
+from enum import Enum, StrEnum
+from types import UnionType
+from typing import (
+    Annotated,
+    Any,
+    NamedTuple,
+    TypeGuard,
+    TypeVar,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
+from uuid import UUID
+
+from heavyswag.errors import RouteTreeError
+from heavyswag.specify.request import BodyMarker, Marker, QueryMarker
+from heavyswag.specify.response import Response
+from heavyswag.validation import DateTimeField, NumField, StrField
+
+_NoneType = type(None)
+
+# Which field type(s) each validator makes sense on — checked once,
+# at route-registration time, so a `StrField` left on a `Body[int]`
+# field after a refactor fails at startup instead of just quietly
+# never triggering. Not duck-typed: unlike `assembly`/`validate`,
+# this has to know the concrete validator types to know what they're
+# for, so it lives here instead of in `heavyswag.validation`.
+_VALIDATOR_COMPATIBLE_TYPES: dict[type, tuple[type, ...]] = {
+    StrField: (str,),
+    NumField: (int, float),
+    DateTimeField: (datetime,),
+}
+
+# Before 3.14, `str | None` and `Optional[str]` are two distinct
+# objects: `get_origin` reports `types.UnionType` for the first and
+# `typing.Union` for the second. 3.14 merged them (`types.UnionType
+# is typing.Union`), so this set collapses to a single member there.
+_UNION_ORIGINS = frozenset({Union, UnionType})
+
+# The non-NamedTuple leaves `Serializer._coerce` knows how to build
+# directly from a JSON/query/path scalar. Anything else reaching a
+# `Body[...]` field as a plain class (not a generic like `list[X]`)
+# has to be a `NamedTuple` instead — there's no other way to
+# represent a structured value.
+# An `Enum` subclass is a scalar leaf too (see `is_scalar`) — it's
+# carried on the wire as its member's value.
+_SCALAR_TYPES = frozenset({int, float, str, bool, bytes, UUID, datetime})
+
+
+class FieldSource(StrEnum):
+    """Where in the request a DTO field's value comes from. Doubles
+    as the OpenAPI parameter `in` value (`body` aside). Headers and
+    cookies are never a DTO field — a controller reads them off
+    `Request` itself."""
+
+    PATH = "path"
+    QUERY = "query"
+    BODY = "body"
+
+
+_MARKER_SOURCES: dict[type[Marker], FieldSource] = {
+    QueryMarker: FieldSource.QUERY,
+    BodyMarker: FieldSource.BODY,
+}
+
+
+def is_namedtuple(target: Any) -> TypeGuard[type[tuple[Any, ...]]]:  # noqa: ANN401
+    return (
+        isinstance(target, type)
+        and issubclass(target, tuple)
+        and hasattr(target, "_fields")
+    )
+
+
+def is_enum(target: Any) -> bool:  # noqa: ANN401
+    return isinstance(target, type) and issubclass(target, Enum)
+
+
+def is_scalar(target: Any) -> bool:  # noqa: ANN401
+    return target in _SCALAR_TYPES or is_enum(target)
+
+
+class DTOField(NamedTuple):
+    name: str
+    target: Any
+    metadata: tuple[Any, ...]
+    optional: bool
+    source: FieldSource
+
+
+def resolve_dto_fields(dto_type: type) -> list[DTOField]:
+    """Break a DTO's type hints into what `Serializer.serialize_dto`
+    and `validate_dto_type` both need: the wire marker(s), the
+    underlying scalar type with `Optional` unwrapped, and whether
+    `None` is a legal value for the field.
+
+    `Optional` and `Annotated` are peeled off layer by layer, in
+    whatever order they're nested, so `Query[str] | None`,
+    `Query[str | None]` and `Annotated[Query[str] | None, StrField()]`
+    all resolve to the same optional `str` query field.
+    """
+    hints = get_type_hints(dto_type, include_extras=True)
+    fields: list[DTOField] = []
+
+    for name, raw_hint in hints.items():
+        target = raw_hint
+        optional = False
+        metadata: list[Any] = []
+
+        while True:
+            if get_origin(target) is Annotated:
+                target, *extra = get_args(target)
+                metadata.extend(extra)
+                continue
+
+            if get_origin(target) in _UNION_ORIGINS:
+                args = get_args(target)
+                non_none = tuple(arg for arg in args if arg is not _NoneType)
+                if len(non_none) == 1 and len(args) == 2:  # noqa: PLR2004
+                    optional = True
+                    target = non_none[0]
+                    continue
+
+            break
+
+        source = _field_source(dto_type, name, metadata)
+        fields.append(
+            DTOField(name, target, tuple(metadata), optional, source)
+        )
+
+    return fields
+
+
+def _field_source(
+    dto_type: type, name: str, metadata: list[Any]
+) -> FieldSource:
+    """The single `FieldSource` a field's markers point at — no
+    marker at all means a path parameter. Two different markers on
+    one field (`Annotated[Body[str], QueryMarker()]`) can't both be
+    honored, so that's a startup error rather than a silent pick.
+    """
+    sources = {
+        _MARKER_SOURCES[type(item)]
+        for item in metadata
+        if type(item) in _MARKER_SOURCES
+    }
+
+    if len(sources) > 1:
+        markers = ", ".join(sorted(sources))
+        msg = (
+            f"DTO '{dto_type.__name__}' field '{name}' carries several "
+            f"location markers ({markers}) — keep exactly one."
+        )
+        raise RouteTreeError(msg)
+
+    return sources.pop() if sources else FieldSource.PATH
+
+
+def _has_no_query_fields(dto_type: type) -> bool:
+    """Whether nothing in `dto_type`, recursively, is `Query[...]` —
+    the shape a `NamedTuple` must have to be legal as a
+    `Body[NamedTuple]` field's target, since there's no query string
+    inside a JSON object to resolve a `Query[...]` field from. A bare
+    field and a `Body[...]` field are both fine — a bare field there
+    is just read straight off the nested JSON object, same as it
+    would be off the top-level one, which is also why the very same
+    `NamedTuple` can double as a marker-free response DTO (see
+    `validate_output_dto_type`). Checked all the way down: a field
+    that's itself a `NamedTuple` must be query-free too.
+    """
+    for field in resolve_dto_fields(dto_type):
+        is_query = field.source is FieldSource.QUERY
+        if is_query or isinstance(field.target, TypeVar):
+            return False
+
+        if is_namedtuple(field.target) and not _has_no_query_fields(
+            field.target
+        ):
+            return False
+
+    return True
+
+
+def _validate_field_shape(dto_type: type, field: DTOField) -> None:
+    target = field.target
+
+    if isinstance(target, TypeVar):
+        # `Body`/`Query` used bare, without `[X]` — the field's
+        # target is then the marker's own unbound TypeVar, not a
+        # type `Serializer._coerce` could ever build a value from.
+        marker_name = "Body" if field.source is FieldSource.BODY else "Query"
+        msg = (
+            f"DTO '{dto_type.__name__}' field '{field.name}' uses "
+            f"'{marker_name}' without a type parameter — write "
+            f"'{marker_name}[X]' instead."
+        )
+        raise RouteTreeError(msg)
+
+    if get_origin(target) is list:
+        (target,) = get_args(target)
+
+    if is_enum(target):
+        validate_enum_type(dto_type, field.name, target)
+        return
+
+    if not (isinstance(target, type) and get_origin(target) is None):
+        return
+
+    if is_namedtuple(target):
+        if field.source is not FieldSource.BODY:
+            msg = (
+                f"DTO '{dto_type.__name__}' field '{field.name}' is a "
+                f"{field.source} parameter and must not be a NamedTuple."
+            )
+            raise RouteTreeError(msg)
+
+        if not _has_no_query_fields(target):
+            msg = (
+                f"DTO '{dto_type.__name__}' field '{field.name}' nests "
+                f"'{target.__name__}', which must not use Query fields "
+                "— there's no query string inside a JSON body. A bare "
+                "field or Body[X] are both fine."
+            )
+            raise RouteTreeError(msg)
+
+        return
+
+    if field.source is FieldSource.BODY and not is_scalar(target):
+        msg = (
+            f"DTO '{dto_type.__name__}' field '{field.name}' nests "
+            f"'{target.__name__}', which must be a NamedTuple."
+        )
+        raise RouteTreeError(msg)
+
+
+def validate_enum_type(dto_type: type, field_name: str, target: Any) -> None:  # noqa: ANN401
+    """An `Enum` travels as its member's value, so every value has to
+    be something the wire can carry and a client can send back —
+    a `str` or an `int` (and not a mix of both, which no JSON Schema
+    `type` could describe).
+    """
+    values = [member.value for member in target]
+    all_str = all(isinstance(value, str) for value in values)
+    all_int = all(
+        isinstance(value, int) and not isinstance(value, bool)
+        for value in values
+    )
+    if not values or not (all_str or all_int):
+        msg = (
+            f"DTO '{dto_type.__name__}' field '{field_name}' uses enum "
+            f"'{target.__name__}', whose values must be all str or all "
+            "int."
+        )
+        raise RouteTreeError(msg)
+
+
+def validate_dto_type(dto_type: type) -> None:
+    """Reject DTO shapes the router can't safely serve.
+
+    A `NamedTuple` default would let a field silently fall back
+    without the client ever sending it, bypassing the explicit-null
+    wire contract `Optional` fields rely on. And a path parameter
+    has no way to be 'absent' from a matched URL, so `Optional`
+    only makes sense for `Body`/`Query` fields.
+    """
+    defaults = getattr(dto_type, "_field_defaults", None)
+    if defaults:
+        names = ", ".join(defaults)
+        msg = (
+            f"DTO '{dto_type.__name__}' must not declare default values "
+            f"for: {names}."
+        )
+        raise RouteTreeError(msg)
+
+    for field in resolve_dto_fields(dto_type):
+        if field.optional and field.source is FieldSource.PATH:
+            msg = (
+                f"DTO '{dto_type.__name__}' field '{field.name}' is a path "
+                "parameter and must not be Optional."
+            )
+            raise RouteTreeError(msg)
+
+        _validate_field_shape(dto_type, field)
+
+
+def validate_output_dto_type(dto_type: type) -> None:
+    """Reject a response DTO that carries a `Query` marker, or a
+    validator on any of its fields.
+
+    A response DTO is always serialized whole into the body, so a
+    bare field and a `Body[...]` field are equally fine — both just
+    end up as a key in the response object. That's also what lets the
+    very same `NamedTuple` double as a nested `Body[NamedTuple]`
+    target on the way in (see `_has_no_query_fields`) without needing
+    a separate, marker-free copy: reusing a request DTO as a nested
+    response DTO is not the recommended shape, but it's a valid one.
+    `Query`, on the other hand, can never be honored — there's no
+    query string to resolve it from on the way out. Checked all the
+    way down: a field that's itself a `NamedTuple` is part of the
+    same body.
+
+    A validator is rejected for a different reason: nothing ever
+    calls `assembly()`/`validate()` for an output DTO — only
+    `CompressedRadixTree._insert` (for the *input* DTO, via
+    `assemble_dto_validators`) and `Serializer.serialize_dto` do that,
+    and neither ever runs against a controller's return value. A
+    `StrField` left on a response field by copy-paste from the request
+    DTO would silently do nothing, which is worse than not having it
+    at all — so it's caught here instead. Duck-typed on `validate`,
+    same as everywhere else a validator is discovered.
+    """
+    for field in resolve_dto_fields(dto_type):
+        if field.source is FieldSource.QUERY:
+            msg = (
+                f"DTO '{dto_type.__name__}' field '{field.name}' has a "
+                "Query marker, but a response has no query string to "
+                "resolve it from — use a bare field or Body[X] instead."
+            )
+            raise RouteTreeError(msg)
+
+        for item in field.metadata:
+            if callable(getattr(item, "validate", None)):
+                msg = (
+                    f"DTO '{dto_type.__name__}' field '{field.name}' "
+                    f"carries a {type(item).__name__} validator, but a "
+                    "response is never validated — remove it."
+                )
+                raise RouteTreeError(msg)
+
+        target = field.target
+        if get_origin(target) is list:
+            (target,) = get_args(target)
+
+        if is_enum(target):
+            validate_enum_type(dto_type, field.name, target)
+
+        if is_namedtuple(target):
+            validate_output_dto_type(target)
+
+
+def assemble_dto_validators(dto_type: type, *, _in_body: bool = False) -> None:
+    """Run each field's `assembly()` once, at route-registration time
+    (`CompressedRadixTree._insert`), so a self-inconsistent validator
+    — e.g. `StrField(min_len=5, max_len=2)` — fails at startup instead
+    of on the first matching request. Also checks, for `Body`/`Query`
+    fields only, that an attached validator is actually meant for the
+    field's own type (see `_VALIDATOR_COMPATIBLE_TYPES`) — a
+    `StrField` left on a `Body[int]` field after a refactor is a
+    mistake worth catching at startup, not something that should just
+    silently never trigger. Path parameters are left unchecked: their
+    shape is already pinned down by the route's own `{name}` segments.
+
+    The `assembly()` call itself is duck-typed — any metadata item
+    exposing that method is treated as a validator, so `StrField`,
+    `NumField`, and any future field type are picked up the same way
+    without this module needing to know about them. The type-match
+    check below is the exception: it has to know the concrete
+    validator types (see `_VALIDATOR_COMPATIBLE_TYPES`).
+
+    Documented examples are run through the very same validators
+    (see `_validate_doc_examples`), so the docs can't advertise a value
+    the route would reject.
+
+    `_in_body` marks a recursive call made for a nested
+    `Body[NamedTuple]` field — every field down there is body-equivalent
+    even without its own marker (see `_has_no_query_fields`), so the
+    type check always applies once inside one.
+    """
+    for field in resolve_dto_fields(dto_type):
+        if _in_body or field.source is not FieldSource.PATH:
+            _validate_validator_types(dto_type, field)
+
+        for item in field.metadata:
+            assembly = getattr(item, "assembly", None)
+            if callable(assembly):
+                assembly()
+
+        _validate_doc_examples(dto_type, field)
+
+        if is_namedtuple(field.target):
+            assemble_dto_validators(field.target, _in_body=True)
+
+
+def _validate_doc_examples(dto_type: type, field: DTOField) -> None:
+    """Run every example a doc item advertises (duck-typed on
+    `doc_examples()`, e.g. `DocField`) through the field's own
+    validators. Only `ValidationError` is translated — anything else
+    a validator raises on a wrongly-typed example is a bug in the
+    example just the same, so it's reported the same way.
+    """
+    validators = [
+        item.validate
+        for item in field.metadata
+        if callable(getattr(item, "validate", None))
+    ]
+    if not validators:
+        return
+
+    for item in field.metadata:
+        doc_examples = getattr(item, "doc_examples", None)
+        if not callable(doc_examples):
+            continue
+
+        for example in doc_examples():
+            for validate in validators:
+                try:
+                    validate(example)
+                except Exception as exc:
+                    msg = (
+                        f"DTO '{dto_type.__name__}' field '{field.name}' "
+                        f"documents example {example!r}, which its own "
+                        f"validator rejects: {exc}"
+                    )
+                    raise RouteTreeError(msg) from exc
+
+
+def _validate_validator_types(dto_type: type, field: DTOField) -> None:
+    target = field.target
+    if get_origin(target) is list:
+        (target,) = get_args(target)
+
+    for item in field.metadata:
+        compatible_types = _VALIDATOR_COMPATIBLE_TYPES.get(type(item))
+        if compatible_types is not None and target not in compatible_types:
+            msg = (
+                f"DTO '{dto_type.__name__}' field '{field.name}' has a "
+                f"{type(item).__name__} validator, which does not match "
+                f"its type ({target!r})."
+            )
+            raise RouteTreeError(msg)
+
+
+def dto_path_param_names(dto_type: type) -> frozenset[str]:
+    """The DTO fields that resolve from a path segment — anything
+    without a location marker. `CompressedRadixTree` compares this
+    against the route's own `{name}` segments, so a mismatch is caught
+    at startup instead of surfacing as a per-request 'Missing field'
+    `SerializationError`.
+    """
+    return frozenset(
+        field.name
+        for field in resolve_dto_fields(dto_type)
+        if field.source is FieldSource.PATH
+    )
+
+
+def dto_type(controller: Any) -> type[Any]:  # noqa: ANN401
+    """The controller's 2nd parameter type — the `dto` that
+    `Serializer.serialize_dto` needs to build (1st is always
+    `Request`, supplied directly from the parsed request). Reads
+    `__annotations__` order directly instead of `inspect.signature`.
+    """
+    hints = get_type_hints(controller)
+    names = [name for name in hints if name != "return"]
+    return hints[names[1]]  # type: ignore[no-any-return]
+
+
+def output_dto_type(controller: Any) -> Any:  # noqa: ANN401
+    """The controller's return type, with `Response[...]` unwrapped
+    to the DTO it carries — a bare `NamedTuple` return and a
+    `Response[NamedTuple]` return end up in the same body, so
+    `validate_output_dto_type` needs the same target either way.
+    """
+    return_type = get_type_hints(controller)["return"]
+
+    if get_origin(return_type) is Response:
+        (return_type,) = get_args(return_type)
+
+    return return_type

@@ -9,11 +9,12 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from functools import partial
 from typing import (
     Any,
-    get_type_hints,
 )
 
+from heavyswag._internal._dto import dto_type as _dto_type
 from heavyswag._internal._serializer import Serializer
 from heavyswag.constants import HttpMethod
+from heavyswag.doc.models import DocApp
 from heavyswag.middlewares.base import (
     Middleware,
     RequestContext,
@@ -25,8 +26,10 @@ from heavyswag.middlewares.setups.err_handler import (
     ErrorHandlingMiddleware,
 )
 from heavyswag.middlewares.setups.request_logging import LoggingMiddleware
-from heavyswag.routes.radix_tree import CompressedRadixTree
+from heavyswag.routes.radix_tree import CompressedRadixTree, collect_routes
 from heavyswag.routes.router import HeavyRouter
+from heavyswag.specify.controller import ControllerWrapper
+from heavyswag.specify.request import Request
 from heavyswag.specify.response import Response
 
 type Message = dict[str, Any]
@@ -47,35 +50,42 @@ async def _noop_lifespan(app: "HeavySwag") -> AsyncIterator[None]:  # noqa: ARG0
 
 class HeavySwag:
     __slots__ = (
-        "dependency_resolver",
+        "di",
+        "doc",
         "err_handler",
         "lifespan",
         "main_router",
         "middlewares",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         main_router: HeavyRouter,
         err_handler: ErrorHandler | None = None,
         middlewares: Sequence[Middleware] = (),
         lifespan: Lifespan | None = None,
+        doc: DocApp | None = None,
+        di: ControllerWrapper | None = None,
     ) -> None:
         self.main_router = main_router
         self.err_handler = err_handler or ErrorHandler()
         self.middlewares = middlewares
         self.lifespan: Lifespan = lifespan or _noop_lifespan
+        self.doc = doc
+        self.di = di
 
 
 class _HS_Server:  # noqa: N801
     __slots__ = (
         "_call_next",
+        "_handlers",
         "_lifespan",
         "_routes",
     )
 
     def __init__(self, app_: HeavySwag) -> None:
         self._routes = CompressedRadixTree(main_router=app_.main_router)
+        self._handlers = _wrap_controllers(app_.main_router, app_.di)
         self._lifespan = partial(app_.lifespan, app_)
         self._call_next = build_middlewares(
             self._assemble_middlewares(app_.err_handler, app_.middlewares),
@@ -87,10 +97,12 @@ class _HS_Server:  # noqa: N801
         err_handler: ErrorHandler,
         middlewares: Sequence[Middleware],
     ) -> list[Middleware]:
-        assembled: list[Middleware] = []
-
-        if not any(isinstance(m, CORSMiddleware) for m in middlewares):
-            assembled.append(CORSMiddleware())
+        # CORS is always the outermost layer — a custom one included —
+        # so a response built by `ErrorHandlingMiddleware` gets the CORS
+        # headers too. Further in, an exception would skip CORS on its
+        # way out, and the browser would drop the error response.
+        cors = [m for m in middlewares if isinstance(m, CORSMiddleware)]
+        assembled: list[Middleware] = [*cors] or [CORSMiddleware()]
 
         if not any(
             isinstance(m, ErrorHandlingMiddleware) for m in middlewares
@@ -100,7 +112,9 @@ class _HS_Server:  # noqa: N801
         if not any(isinstance(m, LoggingMiddleware) for m in middlewares):
             assembled.append(LoggingMiddleware())
 
-        assembled.extend(middlewares)
+        assembled.extend(
+            m for m in middlewares if not isinstance(m, CORSMiddleware)
+        )
         return assembled
 
     async def __call__(
@@ -213,7 +227,8 @@ class _HS_Server:  # noqa: N801
             dto_type, matched.params, query_params
         )
 
-        result = await controller(context.request, dto)
+        handler = self._handlers.get(controller, controller)
+        result = await handler(context.request, dto)
 
         return context.serializer.wrap_response(result)
 
@@ -245,15 +260,22 @@ class _HS_Server:  # noqa: N801
         return response
 
 
-def _dto_type(controller: Any) -> type[Any]:  # noqa: ANN401
-    """The controller's 2nd parameter type — the `dto` that
-    `Serializer.serialize_dto` needs to build (1st is always
-    `Request`, supplied directly from the parsed request). Reads
-    `__annotations__` order directly instead of `inspect.signature`.
+def _wrap_controllers(
+    main_router: HeavyRouter,
+    di: ControllerWrapper | None,
+) -> dict[Any, Callable[[Request, Any], Awaitable[Any]]]:
+    """Each registered controller mapped to what `_dispatch` actually
+    calls — built once, at startup, so a DI wrapper never runs per
+    request. The radix tree keeps the original controller: its hints
+    are what the DTO is built from.
     """
-    hints = get_type_hints(controller)
-    names = [name for name in hints if name != "return"]
-    return hints[names[1]]  # type: ignore[no-any-return]
+    if di is None:
+        return {}
+
+    return {
+        entry.route.controller: di(entry.route.controller)
+        for entry in collect_routes(main_router)
+    }
 
 
 def _reconstruct_head(scope: Scope) -> bytes:

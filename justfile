@@ -4,10 +4,10 @@ install:
 lint:
     uv run ruff format
     uv run ruff check
-    uv run mypy .
+    uv run mypy . --strict
 
 test:
     uv run pytest .
 
-just doc:
-    zensical serve
+doc:
+    uv run zensical serve

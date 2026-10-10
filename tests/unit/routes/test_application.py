@@ -1,9 +1,11 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import pytest
 
+from heavyswag._internal._dto import dto_type
+from heavyswag.doc import DocController
 from heavyswag.errors import HeavySwagError
 from heavyswag.middlewares.setups.cors import CORSMiddleware
 from heavyswag.middlewares.setups.err_handler import (
@@ -13,7 +15,6 @@ from heavyswag.middlewares.setups.err_handler import (
 from heavyswag.middlewares.setups.request_logging import LoggingMiddleware
 from heavyswag.routes.application import (
     HeavySwag,
-    _dto_type,
     _HS_Server,
     _noop_lifespan,
     _reconstruct_head,
@@ -77,25 +78,27 @@ def test_assemble_middlewares_adds_defaults_when_missing() -> None:
     assert LoggingMiddleware in kinds
 
 
-def test_assemble_middlewares_respects_custom_instances_and_order() -> None:
+def test_assemble_middlewares_puts_custom_cors_outermost() -> None:
     app = _build_app()
     server = run_app(app)
     custom_cors = CORSMiddleware()
+    custom_logging = LoggingMiddleware()
 
     assembled = server._assemble_middlewares(  # noqa: SLF001
-        app.err_handler, [custom_cors]
+        app.err_handler, [custom_logging, custom_cors]
     )
 
     cors_instances = [m for m in assembled if isinstance(m, CORSMiddleware)]
     assert cors_instances == [custom_cors]
-    assert assembled[-1] is custom_cors
+    assert assembled[0] is custom_cors
+    assert assembled[-1] is custom_logging
 
 
 def test_dto_type_extracts_second_param() -> None:
     async def controller(_request: Request, _dto: _Empty) -> str:
         return "x"
 
-    assert _dto_type(controller) is _Empty
+    assert dto_type(controller) is _Empty
 
 
 def test_reconstruct_head_without_query() -> None:
@@ -206,7 +209,7 @@ async def test_http_reads_multi_chunk_body() -> None:
 
     @router.post("/echo")
     async def echo(_: Request, dto: Payload) -> str:
-        return dto.text  # type: ignore[return-value]
+        return dto.text
 
     app = HeavySwag(main_router=router)
     server = run_app(app)
@@ -383,3 +386,88 @@ async def test_unknown_scope_type_does_nothing() -> None:
     await server({"type": "websocket"}, receive, send)
 
     assert send.messages == []
+
+
+@pytest.mark.asyncio
+async def test_http_bare_return_is_200_whatever_the_docs_say() -> None:
+    router = HeavyRouter("/")
+
+    @router.post("/", doc=DocController(success_status_code=201))
+    async def create(_: Request, __: _Empty) -> str:
+        return "created"
+
+    server = run_app(HeavySwag(main_router=router))
+    send = SendRecorder()
+
+    await server(
+        http_scope(method="POST", path="/"),
+        ReceiveQueue(
+            [{"type": "http.request", "body": b"", "more_body": False}]
+        ),
+        send,
+    )
+
+    start = send.messages[0]
+    assert start["status"] == 200  # noqa: PLR2004
+    assert (b"content-type", b"text/plain; charset=utf-8") in start["headers"]
+
+
+@pytest.mark.asyncio
+async def test_http_di_wrapper_supplies_extra_params() -> None:
+    router = HeavyRouter("/")
+
+    @router.get("/")
+    async def index(_: Request, __: _Empty, greeting: str) -> str:
+        return greeting
+
+    wrapped: list[object] = []
+
+    def di(controller: Any) -> Any:  # noqa: ANN401
+        wrapped.append(controller)
+
+        async def call(request: Request, dto: Any) -> Any:  # noqa: ANN401
+            return await controller(request, dto, "injected")
+
+        return call
+
+    server = run_app(HeavySwag(main_router=router, di=di))
+    send = SendRecorder()
+
+    await server(
+        http_scope(method="GET", path="/"),
+        ReceiveQueue(
+            [{"type": "http.request", "body": b"", "more_body": False}]
+        ),
+        send,
+    )
+
+    assert wrapped == [index]
+    assert send.messages[1]["body"] == b"injected"
+
+
+@pytest.mark.asyncio
+async def test_http_error_response_carries_custom_cors_headers() -> None:
+    router = HeavyRouter("/")
+
+    @router.get("/")
+    async def index(_: Request, __: _Empty) -> str:
+        raise HeavySwagError
+
+    app = HeavySwag(
+        main_router=router,
+        middlewares=[CORSMiddleware(allow_origins=["*"])],
+    )
+    server = run_app(app)
+    send = SendRecorder()
+
+    await server(
+        http_scope(method="GET", path="/", headers=[(b"origin", b"null")]),
+        ReceiveQueue(
+            [{"type": "http.request", "body": b"", "more_body": False}]
+        ),
+        send,
+    )
+
+    start = send.messages[0]
+    assert start["status"] == 500  # noqa: PLR2004
+    assert (b"Access-Control-Allow-Origin", b"*") in start["headers"]

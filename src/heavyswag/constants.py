@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from datetime import datetime
 from enum import IntEnum
 from typing import NamedTuple
 from uuid import UUID
@@ -20,5 +21,5 @@ class MethodType(IntEnum):
     TRACE = 4
 
 
-type Scalar = int | float | str | bool | UUID | NamedTuple
-type ALLOWED_TYPES = Scalar | Sequence[Scalar]
+type Scalar = int | float | str | bool | bytes | UUID | datetime | NamedTuple
+type ALLOWED_TYPES = Scalar | Sequence[Scalar] | None
