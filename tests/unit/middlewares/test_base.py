@@ -25,14 +25,14 @@ async def test_build_middlewares_with_no_middlewares_calls_func_directly() -> (
 ):
     async def handler(_context: RequestContext) -> Response[str]:
         response: Response[str] = Response()
-        response.set_body("direct")
+        response.content = "direct"
         return response
 
     chain = build_middlewares((), handler)
 
     response = await chain(_make_context())
 
-    assert response.body == "direct"
+    assert response.content == "direct"
 
 
 @pytest.mark.asyncio
@@ -42,7 +42,7 @@ async def test_build_middlewares_wraps_in_registration_order() -> None:
     async def handler(_context: RequestContext) -> Response[str]:
         calls.append("handler")
         response: Response[str] = Response()
-        response.set_body("done")
+        response.content = "done"
         return response
 
     async def outer(
@@ -65,7 +65,7 @@ async def test_build_middlewares_wraps_in_registration_order() -> None:
 
     response = await chain(_make_context())
 
-    assert response.body == "done"
+    assert response.content == "done"
     assert calls == [
         "outer-before",
         "inner-before",

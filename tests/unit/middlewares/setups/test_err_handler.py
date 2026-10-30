@@ -28,7 +28,7 @@ def test_default_mapping_for_base_error() -> None:
     response = handler(HeavySwagError("boom"))
 
     assert response.status_code == 500  # noqa: PLR2004
-    assert response.body == "Internal Server Error"
+    assert response.content == "Internal Server Error"
 
 
 def test_default_mapping_for_serialization_error() -> None:
@@ -37,7 +37,7 @@ def test_default_mapping_for_serialization_error() -> None:
     response = handler(SerializationError("bad input"))
 
     assert response.status_code == 400  # noqa: PLR2004
-    assert response.body == "Bad Request"
+    assert response.content == "Bad Request"
 
 
 def test_unmapped_subclass_falls_back_to_registered_ancestor() -> None:
@@ -54,7 +54,7 @@ def test_unregistered_exception_falls_back_to_hardcoded_default() -> None:
     response = handler(ValueError("nope"))
 
     assert response.status_code == 500  # noqa: PLR2004
-    assert response.body == "Internal Server Error"
+    assert response.content == "Internal Server Error"
 
 
 def test_custom_mapping_overrides_default() -> None:
@@ -66,7 +66,7 @@ def test_custom_mapping_overrides_default() -> None:
     response = handler(OutOfStockError("nope"))
 
     assert response.status_code == 409  # noqa: PLR2004
-    assert response.body == "Out of Stock"
+    assert response.content == "Out of Stock"
 
 
 @pytest.mark.asyncio
@@ -75,12 +75,12 @@ async def test_middleware_passes_through_successful_response() -> None:
 
     async def handler(_context: RequestContext) -> Response[str]:
         response: Response[str] = Response()
-        response.set_body("ok")
+        response.content = "ok"
         return response
 
     response = await middleware(handler, _context())
 
-    assert response.body == "ok"
+    assert response.content == "ok"
 
 
 @pytest.mark.asyncio
@@ -111,7 +111,7 @@ def test_body_factory_builds_structured_error_body() -> None:
     response = handler(SerializationError("bad input"))
 
     assert response.status_code == 400  # noqa: PLR2004
-    assert response.body == _ErrorBody("SerializationError", "Bad Request")
+    assert response.content == _ErrorBody("SerializationError", "Bad Request")
     assert handler.body_type is _ErrorBody
 
 

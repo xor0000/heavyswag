@@ -251,12 +251,12 @@ class _HS_Server:  # noqa: N801
 
     def _not_found_response(self) -> Response[str]:
         response: Response[str] = Response(status_code=404)
-        response.set_body("Not Found")
+        response.content = "Not Found"
         return response
 
     def _bad_method_response(self) -> Response[str]:
         response: Response[str] = Response(status_code=400)
-        response.set_body("Unknown HTTP method")
+        response.content = "Unknown HTTP method"
         return response
 
 

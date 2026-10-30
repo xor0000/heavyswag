@@ -52,7 +52,7 @@ class ErrorHandler:
         status_code, message = self.resolve(type(exc))
 
         response: Response[Any] = Response(status_code=status_code)
-        response.set_body(self.build_body(exc, status_code, message))
+        response.content = self.build_body(exc, status_code, message)
         return response
 
     def build_body(

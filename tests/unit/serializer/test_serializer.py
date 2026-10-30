@@ -497,7 +497,7 @@ def test_parse_query_repeated_key_collects_all_values() -> None:
 def test_wrap_response_passthrough() -> None:
     serializer = Serializer(b"")
     response: Response[str] = Response(status_code=201)
-    response.set_body("hi")
+    response.content = "hi"
 
     assert serializer.wrap_response(response) is response
 
@@ -508,7 +508,7 @@ def test_wrap_response_wraps_bare_value() -> None:
     wrapped = serializer.wrap_response("hello")
 
     assert isinstance(wrapped, Response)
-    assert wrapped.body == "hello"
+    assert wrapped.content == "hello"
     assert wrapped.status_code == 200  # noqa: PLR2004
 
 
@@ -576,7 +576,7 @@ def test_render_cookie_full() -> None:
 def test_render_includes_headers_and_cookies() -> None:
     serializer = Serializer(b"")
     response: Response[str] = Response(status_code=200)
-    response.set_body("ok")
+    response.content = "ok"
     response.attach_header("X-Test", "1")
     response.set_cookie(Cookie(key="k", value="v"))
 
@@ -591,7 +591,7 @@ def test_render_includes_headers_and_cookies() -> None:
 def test_render_no_content_length_for_204() -> None:
     serializer = Serializer(b"")
     response: Response[str] = Response(status_code=204)
-    response.set_body("ignored")
+    response.content = "ignored"
 
     headers, _ = serializer.render(response)
 
@@ -1040,7 +1040,7 @@ def test_render_sets_content_type_from_body(
     body: object, content_type: bytes
 ) -> None:
     response: Response[object] = Response()  # type: ignore[type-var]
-    response.set_body(body)
+    response.content = body
 
     headers, _ = Serializer(b"").render(response)
 
@@ -1049,7 +1049,7 @@ def test_render_sets_content_type_from_body(
 
 def test_render_keeps_explicit_content_type() -> None:
     response: Response[str] = Response()
-    response.set_body("<p>hi</p>")
+    response.content = "<p>hi</p>"
     response.attach_header("Content-Type", "text/html")
 
     headers, _ = Serializer(b"").render(response)

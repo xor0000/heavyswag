@@ -315,7 +315,7 @@ class Serializer:
             return result
 
         response: Response[Any] = Response()
-        response.set_body(result)
+        response.content = result
         return response
 
     def render(
@@ -325,13 +325,13 @@ class Serializer:
         """A `Response` turned into ASGI-ready (headers, body)."""
         headers = [
             (key.encode("latin-1"), value.encode("latin-1"))
-            for key, value in response.header or ()
+            for key, value in response.headers or ()
         ]
-        for cookie in response.cookie or ():
+        for cookie in response.cookies or ():
             rendered = self.render_cookie(cookie).encode("latin-1")
             headers.append((b"set-cookie", rendered))
 
-        body = self.render_body(response.body)
+        body = self.render_body(response.content)
 
         # RFC 9110: 1xx/204/304 responses must not carry a body or
         # a Content-Length.
@@ -345,7 +345,7 @@ class Serializer:
             )
             if not has_content_type:
                 headers.append(
-                    (b"content-type", self._content_type(response.body))
+                    (b"content-type", self._content_type(response.content))
                 )
             headers.append(
                 (b"content-length", str(len(body)).encode("latin-1"))
