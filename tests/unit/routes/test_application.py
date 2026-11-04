@@ -18,6 +18,7 @@ from heavyswag.routes.application import (
     _HS_Server,
     _noop_lifespan,
     _reconstruct_head,
+    _RequestScopeMiddleware,
     run_app,
 )
 from heavyswag.routes.router import HeavyRouter
@@ -38,6 +39,42 @@ def _build_app(**kwargs: object) -> HeavySwag:
         return "ok"
 
     return HeavySwag(main_router=router, **kwargs)  # type: ignore[arg-type]
+
+
+class _Resolver:
+    def __init__(self, extra: str = "") -> None:
+        self.extra = extra
+        self.wrapped: list[object] = []
+        self.requests: list[Request] = []
+        self.events: list[str] = []
+
+    def wrap_controller(self, controller: Any) -> Any:  # noqa: ANN401
+        self.wrapped.append(controller)
+        if not self.extra:
+            return controller
+
+        async def call(request: Request, dto: Any) -> Any:  # noqa: ANN401
+            return await controller(request, dto, self.extra)
+
+        return call
+
+    def wrap_middleware(self, middleware: type[Any]) -> Any:  # noqa: ANN401
+        self.wrapped.append(middleware)
+        events = self.events
+
+        async def call(call_next: Any, context: Any) -> Any:  # noqa: ANN401
+            return await middleware(events)(call_next, context)
+
+        return call
+
+    @asynccontextmanager
+    async def request_scope(self, request: Request) -> AsyncIterator[None]:
+        self.requests.append(request)
+        self.events.append("enter")
+        try:
+            yield
+        finally:
+            self.events.append("exit")
 
 
 def test_heavyswag_defaults() -> None:
@@ -420,17 +457,9 @@ async def test_http_di_wrapper_supplies_extra_params() -> None:
     async def index(_: Request, __: _Empty, greeting: str) -> str:
         return greeting
 
-    wrapped: list[object] = []
+    di_resolver = _Resolver(extra="injected")
 
-    def di(controller: Any) -> Any:  # noqa: ANN401
-        wrapped.append(controller)
-
-        async def call(request: Request, dto: Any) -> Any:  # noqa: ANN401
-            return await controller(request, dto, "injected")
-
-        return call
-
-    server = run_app(HeavySwag(main_router=router, di=di))
+    server = run_app(HeavySwag(main_router=router, di_resolver=di_resolver))
     send = SendRecorder()
 
     await server(
@@ -441,8 +470,66 @@ async def test_http_di_wrapper_supplies_extra_params() -> None:
         send,
     )
 
-    assert wrapped == [index]
+    assert di_resolver.wrapped == [index]
     assert send.messages[1]["body"] == b"injected"
+
+
+@pytest.mark.asyncio
+async def test_http_di_resolver_request_scope_wraps_user_middlewares() -> None:
+    di_resolver = _Resolver()
+    events = di_resolver.events
+
+    async def middleware(call_next: Any, context: Any) -> Any:  # noqa: ANN401
+        events.append("middleware")
+        return await call_next(context)
+
+    router = HeavyRouter("/")
+
+    @router.get("/")
+    async def index(_: Request, __: _Empty) -> str:
+        events.append("controller")
+        return "ok"
+
+    app = HeavySwag(
+        main_router=router,
+        middlewares=[middleware],
+        di_resolver=di_resolver,
+    )
+    server = run_app(app)
+    send = SendRecorder()
+
+    await server(
+        http_scope(method="GET", path="/"),
+        ReceiveQueue(
+            [{"type": "http.request", "body": b"", "more_body": False}]
+        ),
+        send,
+    )
+
+    assert events == ["enter", "middleware", "controller", "exit"]
+    assert isinstance(di_resolver.requests[0], Request)
+    assert send.messages[0]["status"] == 200  # noqa: PLR2004
+
+
+def test_request_scope_sits_inside_builtin_middlewares() -> None:
+    async def custom(call_next: Any, context: Any) -> Any:  # noqa: ANN401
+        return await call_next(context)
+
+    err_handling = ErrorHandlingMiddleware(ErrorHandler())
+    server = run_app(_build_app())
+
+    assembled = server._assemble_middlewares(  # noqa: SLF001
+        ErrorHandler(), [custom, err_handling], _Resolver()
+    )
+
+    assert [type(m) for m in assembled[:4]] == [
+        CORSMiddleware,
+        LoggingMiddleware,
+        type(custom),
+        ErrorHandlingMiddleware,
+    ]
+    assert isinstance(assembled[4], _RequestScopeMiddleware)
+    assert len(assembled) == 5  # noqa: PLR2004
 
 
 @pytest.mark.asyncio
@@ -471,3 +558,53 @@ async def test_http_error_response_carries_custom_cors_headers() -> None:
     start = send.messages[0]
     assert start["status"] == 500  # noqa: PLR2004
     assert (b"Access-Control-Allow-Origin", b"*") in start["headers"]
+
+
+class _RecordingMiddleware:
+    instances = 0
+
+    def __init__(self, events: list[str] | None = None) -> None:
+        type(self).instances += 1
+        self._events = events if events is not None else []
+
+    async def __call__(self, call_next: Any, context: Any) -> Any:  # noqa: ANN401
+        self._events.append("class middleware")
+        return await call_next(context)
+
+
+async def _get_root(server: _HS_Server) -> SendRecorder:
+    send = SendRecorder()
+    await server(
+        http_scope(method="GET", path="/"),
+        ReceiveQueue(
+            [{"type": "http.request", "body": b"", "more_body": False}]
+        ),
+        send,
+    )
+    return send
+
+
+@pytest.mark.asyncio
+async def test_http_middleware_class_is_built_by_di_resolver() -> None:
+    di_resolver = _Resolver()
+    server = run_app(
+        _build_app(middlewares=[_RecordingMiddleware], di_resolver=di_resolver)
+    )
+
+    send = await _get_root(server)
+
+    assert _RecordingMiddleware in di_resolver.wrapped
+    assert di_resolver.events == ["enter", "class middleware", "exit"]
+    assert send.messages[0]["status"] == 200  # noqa: PLR2004
+
+
+@pytest.mark.asyncio
+async def test_http_middleware_class_without_resolver_is_built_once() -> None:
+    _RecordingMiddleware.instances = 0
+    server = run_app(_build_app(middlewares=[_RecordingMiddleware]))
+
+    await _get_root(server)
+    send = await _get_root(server)
+
+    assert _RecordingMiddleware.instances == 1
+    assert send.messages[0]["status"] == 200  # noqa: PLR2004
