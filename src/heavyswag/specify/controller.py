@@ -7,12 +7,8 @@ from heavyswag.specify.request import Request
 from heavyswag.specify.response import Response
 
 if TYPE_CHECKING:
-    # `middlewares.base` imports the serializer, which imports
-    # `heavyswag.specify` — only the annotation needs it.
     from heavyswag.middlewares.base import Middleware
 
-# The shape of every route handler: the parsed `Request`, the DTO built
-# from the path / query / body, and a DTO (or a `Response` carrying one)
 # back. Lives here, next to `Request` and `Response`, rather than in the
 # router — so anything that needs to talk about a controller can, without
 # depending on `heavyswag.routes`.
