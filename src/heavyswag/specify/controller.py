@@ -9,9 +9,7 @@ from heavyswag.specify.response import Response
 if TYPE_CHECKING:
     from heavyswag.middlewares.base import Middleware
 
-# back. Lives here, next to `Request` and `Response`, rather than in the
-# router — so anything that needs to talk about a controller can, without
-# depending on `heavyswag.routes`.
+
 type Controller[
     InDTO: tuple[ALLOWED_TYPES, ...] | None,
     OutDTO: ALLOWED_TYPES | tuple[ALLOWED_TYPES, ...] | None,
