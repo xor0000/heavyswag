@@ -16,6 +16,7 @@ from heavyswag._internal._serializer import Serializer
 from heavyswag.constants import HttpMethod
 from heavyswag.doc.models import DocApp
 from heavyswag.middlewares.base import (
+    CallNext,
     Middleware,
     RequestContext,
     build_middlewares,
@@ -28,7 +29,7 @@ from heavyswag.middlewares.setups.err_handler import (
 from heavyswag.middlewares.setups.request_logging import LoggingMiddleware
 from heavyswag.routes.radix_tree import CompressedRadixTree, collect_routes
 from heavyswag.routes.router import HeavyRouter
-from heavyswag.specify.controller import ControllerWrapper
+from heavyswag.specify.controller import DependencyResolver
 from heavyswag.specify.request import Request
 from heavyswag.specify.response import Response
 
@@ -50,7 +51,7 @@ async def _noop_lifespan(app: "HeavySwag") -> AsyncIterator[None]:  # noqa: ARG0
 
 class HeavySwag:
     __slots__ = (
-        "di",
+        "di_resolver",
         "doc",
         "err_handler",
         "lifespan",
@@ -62,17 +63,39 @@ class HeavySwag:
         self,
         main_router: HeavyRouter,
         err_handler: ErrorHandler | None = None,
-        middlewares: Sequence[Middleware] = (),
+        middlewares: Sequence[Middleware | type[Middleware]] = (),
         lifespan: Lifespan | None = None,
         doc: DocApp | None = None,
-        di: ControllerWrapper | None = None,
+        di_resolver: DependencyResolver | None = None,
     ) -> None:
         self.main_router = main_router
         self.err_handler = err_handler or ErrorHandler()
         self.middlewares = middlewares
         self.lifespan: Lifespan = lifespan or _noop_lifespan
         self.doc = doc
-        self.di = di
+        self.di_resolver = di_resolver
+
+
+_OUTER_MIDDLEWARES = (
+    CORSMiddleware,
+    ErrorHandlingMiddleware,
+    LoggingMiddleware,
+)
+
+
+class _RequestScopeMiddleware:
+    __slots__ = ("_di_resolver",)
+
+    def __init__(self, di_resolver: DependencyResolver) -> None:
+        self._di_resolver = di_resolver
+
+    async def __call__(
+        self,
+        call_next: CallNext,
+        context: RequestContext,
+    ) -> Response[Any]:
+        async with self._di_resolver.request_scope(context.request):
+            return await call_next(context)
 
 
 class _HS_Server:  # noqa: N801
@@ -85,10 +108,16 @@ class _HS_Server:  # noqa: N801
 
     def __init__(self, app_: HeavySwag) -> None:
         self._routes = CompressedRadixTree(main_router=app_.main_router)
-        self._handlers = _wrap_controllers(app_.main_router, app_.di)
+        self._handlers = _wrap_controllers(app_.main_router, app_.di_resolver)
         self._lifespan = partial(app_.lifespan, app_)
         self._call_next = build_middlewares(
-            self._assemble_middlewares(app_.err_handler, app_.middlewares),
+            self._assemble_middlewares(
+                app_.err_handler,
+                _build_middleware_instances(
+                    app_.middlewares, app_.di_resolver
+                ),
+                app_.di_resolver,
+            ),
             self._dispatch,
         )
 
@@ -96,6 +125,7 @@ class _HS_Server:  # noqa: N801
         self,
         err_handler: ErrorHandler,
         middlewares: Sequence[Middleware],
+        di_resolver: DependencyResolver | None = None,
     ) -> list[Middleware]:
         # CORS is always the outermost layer — a custom one included —
         # so a response built by `ErrorHandlingMiddleware` gets the CORS
@@ -115,6 +145,18 @@ class _HS_Server:  # noqa: N801
         assembled.extend(
             m for m in middlewares if not isinstance(m, CORSMiddleware)
         )
+
+        if di_resolver is not None:
+            position = max(
+                (
+                    index + 1
+                    for index, middleware in enumerate(assembled)
+                    if isinstance(middleware, _OUTER_MIDDLEWARES)
+                ),
+                default=0,
+            )
+            assembled.insert(position, _RequestScopeMiddleware(di_resolver))
+
         return assembled
 
     async def __call__(
@@ -260,20 +302,43 @@ class _HS_Server:  # noqa: N801
         return response
 
 
+def _build_middleware_instances(
+    middlewares: Sequence[Middleware | type[Middleware]],
+    di_resolver: DependencyResolver | None,
+) -> list[Middleware]:
+    return [
+        _build_middleware_instance(middleware, di_resolver)
+        for middleware in middlewares
+    ]
+
+
+def _build_middleware_instance(
+    middleware: Middleware | type[Middleware],
+    di_resolver: DependencyResolver | None,
+) -> Middleware:
+    if not isinstance(middleware, type):
+        return middleware
+    if di_resolver is None:
+        return middleware()
+    return di_resolver.wrap_middleware(middleware)
+
+
 def _wrap_controllers(
     main_router: HeavyRouter,
-    di: ControllerWrapper | None,
+    di_resolver: DependencyResolver | None,
 ) -> dict[Any, Callable[[Request, Any], Awaitable[Any]]]:
     """Each registered controller mapped to what `_dispatch` actually
     calls — built once, at startup, so a DI wrapper never runs per
     request. The radix tree keeps the original controller: its hints
     are what the DTO is built from.
     """
-    if di is None:
+    if di_resolver is None:
         return {}
 
     return {
-        entry.route.controller: di(entry.route.controller)
+        entry.route.controller: di_resolver.wrap_controller(
+            entry.route.controller
+        )
         for entry in collect_routes(main_router)
     }
 
