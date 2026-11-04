@@ -710,7 +710,9 @@ def _error_example(
     sets may fail; the example is then just left out."""
     try:
         exc = exc_type.__new__(exc_type)
-        return to_jsonable(err_handler.build_body(exc, status_code, message))
+        return to_jsonable(
+            err_handler.build_content(exc, status_code, message)
+        )
     except Exception:  # noqa: BLE001
         return None
 

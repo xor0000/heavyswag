@@ -5,11 +5,11 @@ from heavyswag.specify.cookie import Cookie
 
 
 @dataclass(slots=True, kw_only=True)
-class Response[Body: ALLOWED_TYPES]:
+class Response[Content: ALLOWED_TYPES]:
     status_code: int = 200
     headers: set[tuple[str, str]] | None = None
     cookies: set[Cookie] | None = None
-    content: Body | None = None
+    content: Content | None = None
 
     def set_cookie(self, cookie: Cookie) -> None:
         if self.cookies is None:

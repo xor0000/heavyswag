@@ -52,10 +52,10 @@ class ErrorHandler:
         status_code, message = self.resolve(type(exc))
 
         response: Response[Any] = Response(status_code=status_code)
-        response.content = self.build_body(exc, status_code, message)
+        response.content = self.build_content(exc, status_code, message)
         return response
 
-    def build_body(
+    def build_content(
         self, exc: Exception, status_code: int, message: str
     ) -> Any:  # noqa: ANN401
         """What `__call__` would send for `exc` — `heavyswag.doc` uses

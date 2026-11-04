@@ -512,28 +512,28 @@ def test_wrap_response_wraps_bare_value() -> None:
     assert wrapped.status_code == 200  # noqa: PLR2004
 
 
-def test_render_body_none() -> None:
+def test_render_content_none() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.render_body(None) == b""
+    assert serializer.render_content(None) == b""
 
 
-def test_render_body_bytes_passthrough() -> None:
+def test_render_content_bytes_passthrough() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.render_body(b"raw") == b"raw"
+    assert serializer.render_content(b"raw") == b"raw"
 
 
-def test_render_body_str_encodes() -> None:
+def test_render_content_str_encodes() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.render_body("hi") == b"hi"
+    assert serializer.render_content("hi") == b"hi"
 
 
-def test_render_body_json_encodes_other_types() -> None:
+def test_render_content_json_encodes_other_types() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.render_body({"a": 1}) == b'{"a": 1}'
+    assert serializer.render_content({"a": 1}) == b'{"a": 1}'
 
 
 def test_render_cookie_minimal() -> None:
@@ -850,7 +850,7 @@ def test_to_jsonable_deeply_nested_mixed_structure() -> None:
     assert result["items"][1] == [1, 2, {"nested": True}]
 
 
-def test_render_body_collection_response_shape() -> None:
+def test_render_content_collection_response_shape() -> None:
     class Item(NamedTuple):
         id: int
         labels: set[str]
@@ -862,7 +862,7 @@ def test_render_body_collection_response_shape() -> None:
         "items": [Item(id=1, labels={"a", "b"}), Item(id=2, labels=set())],
     }
 
-    rendered = json.loads(serializer.render_body(body))
+    rendered = json.loads(serializer.render_content(body))
 
     assert rendered["resorse"] == "page"
     assert rendered["kind"] == "Collection"
@@ -871,7 +871,7 @@ def test_render_body_collection_response_shape() -> None:
     assert rendered["items"][1] == {"id": 2, "labels": []}
 
 
-def test_render_body_list_of_namedtuples_with_nested_collections() -> None:
+def test_render_content_list_of_namedtuples_with_nested_collections() -> None:
     class Row(NamedTuple):
         name: str
         scores: tuple[int, ...]
@@ -883,7 +883,7 @@ def test_render_body_list_of_namedtuples_with_nested_collections() -> None:
         Row(name="b", scores=(), unique_tags=set()),
     ]
 
-    rendered = json.loads(serializer.render_body(body))
+    rendered = json.loads(serializer.render_content(body))
 
     assert rendered[0]["name"] == "a"
     assert rendered[0]["scores"] == [1, 2, 3]
