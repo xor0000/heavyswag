@@ -651,18 +651,22 @@ class _ErrorBody(NamedTuple):
     message: Annotated[str, DocField(example="Bad Request")]
 
 
-def _error_body(exc: Exception, status_code: int, message: str) -> _ErrorBody:  # noqa: ARG001
+def _error_schema(
+    exc: Exception,
+    status_code: int,  # noqa: ARG001
+    message: str,
+) -> _ErrorBody:
     return _ErrorBody(code=type(exc).__name__, message=message)
 
 
-def test_error_body_factory_documents_json_errors() -> None:
+def test_error_schema_factory_documents_json_errors() -> None:
     router = HeavyRouter("/")
 
     @router.post("/", doc=DocController(raises=[_TakenError]))
     async def create(_: Request, __: _Empty) -> None:
         return None
 
-    handler = ErrorHandler({_TakenError: (409, "Taken")}, body=_error_body)
+    handler = ErrorHandler({_TakenError: (409, "Taken")}, schema=_error_schema)
 
     spec = build_openapi(_app(router, err_handler=handler))
     responses = _single_operation(spec)["responses"]
@@ -689,7 +693,7 @@ def test_error_example_is_skipped_when_factory_fails() -> None:
     class _Body(NamedTuple):
         code: str
 
-    def body(exc: Exception, status_code: int, message: str) -> _Body:  # noqa: ARG001
+    def schema(exc: Exception, status_code: int, message: str) -> _Body:  # noqa: ARG001
         return _Body(code=exc.code)  # type: ignore[attr-defined]
 
     router = HeavyRouter("/")
@@ -698,7 +702,7 @@ def test_error_example_is_skipped_when_factory_fails() -> None:
     async def create(_: Request, __: _Empty) -> None:
         return None
 
-    handler = ErrorHandler({_CodedError: (409, "Coded")}, body=body)
+    handler = ErrorHandler({_CodedError: (409, "Coded")}, schema=schema)
 
     responses = _single_operation(
         build_openapi(_app(router, err_handler=handler))

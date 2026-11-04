@@ -10,7 +10,7 @@ from heavyswag.errors import (
 from heavyswag.middlewares.base import CallNext, RequestContext
 from heavyswag.specify.response import Response
 
-type ErrorBody = Callable[[Exception, int, str], NamedTuple]
+type ErrorSchema = Callable[[Exception, int, str], NamedTuple]
 
 _FALLBACK: tuple[int, str] = (500, "Internal Server Error")
 
@@ -23,19 +23,19 @@ class ErrorHandler:
     not a subclass of a registered class) falls back to 500, so a
     request can never leak an unhandled exception to the client.
 
-    By default the body is the plain-text message. `body` swaps that
+    By default the body is the plain-text message. `schema` swaps that
     for one structured envelope shared by every error:
-    `body(exc, status_code, message)` returns a `NamedTuple`, sent as
+    `schema(exc, status_code, message)` returns a `NamedTuple`, sent as
     JSON. It must annotate its return type — that's the schema
     `heavyswag.doc` documents every error response with.
     """
 
-    __slots__ = ("_body", "_map_errors", "body_type")
+    __slots__ = ("_map_errors", "_schema", "schema_type")
 
     def __init__(
         self,
         map_errors: Mapping[type[Exception], tuple[int, str]] | None = None,
-        body: ErrorBody | None = None,
+        schema: ErrorSchema | None = None,
     ) -> None:
         self._map_errors: dict[type[Exception], tuple[int, str]] = {
             HeavySwagError: _FALLBACK,
@@ -43,9 +43,9 @@ class ErrorHandler:
             ValidationError: (400, "Bad Request"),
             **(map_errors or {}),
         }
-        self._body = body
-        self.body_type: type[tuple[Any, ...]] | None = (
-            None if body is None else _body_type(body)
+        self._schema = schema
+        self.schema_type: type[tuple[Any, ...]] | None = (
+            None if schema is None else _schema_type(schema)
         )
 
     def __call__(self, exc: Exception) -> Response[Any]:
@@ -60,10 +60,10 @@ class ErrorHandler:
     ) -> Any:  # noqa: ANN401
         """What `__call__` would send for `exc` — `heavyswag.doc` uses
         it to render an example error body."""
-        if self._body is None:
+        if self._schema is None:
             return message
 
-        return self._body(exc, status_code, message)
+        return self._schema(exc, status_code, message)
 
     def resolve(self, exc_type: type[Exception]) -> tuple[int, str]:
         return self.lookup(exc_type) or _FALLBACK
@@ -79,15 +79,15 @@ class ErrorHandler:
         return None
 
 
-def _body_type(body: ErrorBody) -> type[tuple[Any, ...]]:
+def _schema_type(schema: ErrorSchema) -> type[tuple[Any, ...]]:
     try:
-        return_type = get_type_hints(body).get("return")
+        return_type = get_type_hints(schema).get("return")
     except (NameError, TypeError):
         return_type = None
 
     if not is_namedtuple(return_type):
         msg = (
-            "ErrorHandler body factory must annotate its return type "
+            "ErrorHandler schema factory must annotate its return type "
             f"as a NamedTuple, got {return_type!r}."
         )
         raise HeavySwagError(msg)

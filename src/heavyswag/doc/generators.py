@@ -373,12 +373,12 @@ class _OpenAPIBuilder:
         err_handler = self._app.err_handler
         messages = list(dict.fromkeys(message for _, message in errors))
 
-        if err_handler.body_type is None:
+        if err_handler.schema_type is None:
             media_type = "text/plain"
             schema: dict[str, Any] = {"type": "string"}
         else:
             media_type = "application/json"
-            schema = self._type_schema(err_handler.body_type)
+            schema = self._type_schema(err_handler.schema_type)
 
         examples: dict[str, Any] = {}
         for exc_type, message in errors:
