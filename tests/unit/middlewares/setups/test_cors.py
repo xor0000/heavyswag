@@ -22,7 +22,7 @@ def _context(
 
 async def _handler(_context: RequestContext) -> Response[str]:
     response: Response[str] = Response(status_code=200)
-    response.set_body("ok")
+    response.content = "ok"
     return response
 
 
@@ -32,8 +32,8 @@ async def test_no_origin_header_passes_through_untouched() -> None:
 
     response = await middleware(_handler, _context())
 
-    assert response.body == "ok"
-    assert response.header is None
+    assert response.content == "ok"
+    assert response.headers is None
 
 
 @pytest.mark.asyncio
@@ -43,8 +43,8 @@ async def test_disallowed_origin_passes_through_without_headers() -> None:
 
     response = await middleware(_handler, context)
 
-    assert response.body == "ok"
-    assert response.header is None
+    assert response.content == "ok"
+    assert response.headers is None
 
 
 @pytest.mark.asyncio
@@ -54,14 +54,15 @@ async def test_allowed_origin_attaches_headers() -> None:
 
     response = await middleware(_handler, context)
 
-    assert response.header is not None
+    assert response.headers is not None
     assert (
         "Access-Control-Allow-Origin",
         "https://example.com",
-    ) in response.header
-    assert ("Vary", "Origin") in response.header
+    ) in response.headers
+    assert ("Vary", "Origin") in response.headers
     assert not any(
-        key == "Access-Control-Allow-Credentials" for key, _ in response.header
+        key == "Access-Control-Allow-Credentials"
+        for key, _ in response.headers
     )
 
 
@@ -77,8 +78,8 @@ async def test_allowed_origin_with_credentials_attaches_credentials_header() -> 
 
     response = await middleware(_handler, context)
 
-    assert response.header is not None
-    assert ("Access-Control-Allow-Credentials", "true") in response.header
+    assert response.headers is not None
+    assert ("Access-Control-Allow-Credentials", "true") in response.headers
 
 
 @pytest.mark.asyncio
@@ -88,8 +89,8 @@ async def test_wildcard_origin_without_credentials_returns_star() -> None:
 
     response = await middleware(_handler, context)
 
-    assert response.header is not None
-    assert ("Access-Control-Allow-Origin", "*") in response.header
+    assert response.headers is not None
+    assert ("Access-Control-Allow-Origin", "*") in response.headers
 
 
 @pytest.mark.asyncio
@@ -99,11 +100,11 @@ async def test_wildcard_origin_with_credentials_echoes_origin() -> None:
 
     response = await middleware(_handler, context)
 
-    assert response.header is not None
+    assert response.headers is not None
     assert (
         "Access-Control-Allow-Origin",
         "https://anything.example",
-    ) in response.header
+    ) in response.headers
 
 
 @pytest.mark.asyncio
@@ -134,11 +135,11 @@ async def test_preflight_request_returns_204_without_calling_handler() -> None:
 
     assert called is False
     assert response.status_code == 204  # noqa: PLR2004
-    assert response.header is not None
-    assert ("Access-Control-Allow-Methods", "GET, POST") in response.header
-    assert ("Access-Control-Max-Age", "120") in response.header
-    assert ("Access-Control-Allow-Headers", "content-type") in response.header
-    assert ("Access-Control-Allow-Credentials", "true") in response.header
+    assert response.headers is not None
+    assert ("Access-Control-Allow-Methods", "GET, POST") in response.headers
+    assert ("Access-Control-Max-Age", "120") in response.headers
+    assert ("Access-Control-Allow-Headers", "content-type") in response.headers
+    assert ("Access-Control-Allow-Credentials", "true") in response.headers
 
 
 @pytest.mark.asyncio
@@ -156,8 +157,8 @@ async def test_preflight_without_allow_headers_or_credentials_omits_them() -> (
 
     response = await middleware(_handler, context)
 
-    assert response.header is not None
-    keys = {key for key, _ in response.header}
+    assert response.headers is not None
+    keys = {key for key, _ in response.headers}
     assert "Access-Control-Allow-Headers" not in keys
     assert "Access-Control-Allow-Credentials" not in keys
 
@@ -176,5 +177,5 @@ async def test_options_without_preflight_header_runs_handler() -> None:
 
     response = await middleware(_handler, context)
 
-    assert response.body == "ok"
+    assert response.content == "ok"
     assert response.status_code == 200  # noqa: PLR2004

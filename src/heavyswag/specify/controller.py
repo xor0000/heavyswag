@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 type Controller[
     InDTO: tuple[ALLOWED_TYPES, ...] | None,
-    OutDTO: ALLOWED_TYPES | tuple[ALLOWED_TYPES, ...] | None,
+    OutDTO: ALLOWED_TYPES | tuple[ALLOWED_TYPES, ...],
     **P,
 ] = Callable[
     Concatenate[Request, InDTO, P], Awaitable[OutDTO | Response[OutDTO]]  # type: ignore[type-var]

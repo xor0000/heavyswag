@@ -497,7 +497,7 @@ def test_parse_query_repeated_key_collects_all_values() -> None:
 def test_wrap_response_passthrough() -> None:
     serializer = Serializer(b"")
     response: Response[str] = Response(status_code=201)
-    response.set_body("hi")
+    response.content = "hi"
 
     assert serializer.wrap_response(response) is response
 
@@ -508,32 +508,32 @@ def test_wrap_response_wraps_bare_value() -> None:
     wrapped = serializer.wrap_response("hello")
 
     assert isinstance(wrapped, Response)
-    assert wrapped.body == "hello"
+    assert wrapped.content == "hello"
     assert wrapped.status_code == 200  # noqa: PLR2004
 
 
-def test_render_body_none() -> None:
+def test_render_content_none() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.render_body(None) == b""
+    assert serializer.render_content(None) == b""
 
 
-def test_render_body_bytes_passthrough() -> None:
+def test_render_content_bytes_passthrough() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.render_body(b"raw") == b"raw"
+    assert serializer.render_content(b"raw") == b"raw"
 
 
-def test_render_body_str_encodes() -> None:
+def test_render_content_str_encodes() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.render_body("hi") == b"hi"
+    assert serializer.render_content("hi") == b"hi"
 
 
-def test_render_body_json_encodes_other_types() -> None:
+def test_render_content_json_encodes_other_types() -> None:
     serializer = Serializer(b"")
 
-    assert serializer.render_body({"a": 1}) == b'{"a": 1}'
+    assert serializer.render_content({"a": 1}) == b'{"a": 1}'
 
 
 def test_render_cookie_minimal() -> None:
@@ -576,7 +576,7 @@ def test_render_cookie_full() -> None:
 def test_render_includes_headers_and_cookies() -> None:
     serializer = Serializer(b"")
     response: Response[str] = Response(status_code=200)
-    response.set_body("ok")
+    response.content = "ok"
     response.attach_header("X-Test", "1")
     response.set_cookie(Cookie(key="k", value="v"))
 
@@ -591,7 +591,7 @@ def test_render_includes_headers_and_cookies() -> None:
 def test_render_no_content_length_for_204() -> None:
     serializer = Serializer(b"")
     response: Response[str] = Response(status_code=204)
-    response.set_body("ignored")
+    response.content = "ignored"
 
     headers, _ = serializer.render(response)
 
@@ -850,7 +850,7 @@ def test_to_jsonable_deeply_nested_mixed_structure() -> None:
     assert result["items"][1] == [1, 2, {"nested": True}]
 
 
-def test_render_body_collection_response_shape() -> None:
+def test_render_content_collection_response_shape() -> None:
     class Item(NamedTuple):
         id: int
         labels: set[str]
@@ -862,7 +862,7 @@ def test_render_body_collection_response_shape() -> None:
         "items": [Item(id=1, labels={"a", "b"}), Item(id=2, labels=set())],
     }
 
-    rendered = json.loads(serializer.render_body(body))
+    rendered = json.loads(serializer.render_content(body))
 
     assert rendered["resorse"] == "page"
     assert rendered["kind"] == "Collection"
@@ -871,7 +871,7 @@ def test_render_body_collection_response_shape() -> None:
     assert rendered["items"][1] == {"id": 2, "labels": []}
 
 
-def test_render_body_list_of_namedtuples_with_nested_collections() -> None:
+def test_render_content_list_of_namedtuples_with_nested_collections() -> None:
     class Row(NamedTuple):
         name: str
         scores: tuple[int, ...]
@@ -883,7 +883,7 @@ def test_render_body_list_of_namedtuples_with_nested_collections() -> None:
         Row(name="b", scores=(), unique_tags=set()),
     ]
 
-    rendered = json.loads(serializer.render_body(body))
+    rendered = json.loads(serializer.render_content(body))
 
     assert rendered[0]["name"] == "a"
     assert rendered[0]["scores"] == [1, 2, 3]
@@ -1040,7 +1040,7 @@ def test_render_sets_content_type_from_body(
     body: object, content_type: bytes
 ) -> None:
     response: Response[object] = Response()  # type: ignore[type-var]
-    response.set_body(body)
+    response.content = body
 
     headers, _ = Serializer(b"").render(response)
 
@@ -1049,7 +1049,7 @@ def test_render_sets_content_type_from_body(
 
 def test_render_keeps_explicit_content_type() -> None:
     response: Response[str] = Response()
-    response.set_body("<p>hi</p>")
+    response.content = "<p>hi</p>"
     response.attach_header("Content-Type", "text/html")
 
     headers, _ = Serializer(b"").render(response)

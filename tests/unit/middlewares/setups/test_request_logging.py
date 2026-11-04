@@ -40,7 +40,7 @@ async def test_logs_successful_response_status(
 
     async def handler(_context: RequestContext) -> Response[str]:
         response: Response[str] = Response(status_code=201)
-        response.set_body("ok")
+        response.content = "ok"
         return response
 
     with caplog.at_level(logging.INFO, logger="heavyswag"):

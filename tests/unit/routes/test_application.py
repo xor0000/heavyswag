@@ -300,7 +300,7 @@ async def test_http_response_object_is_used_as_is() -> None:
     @router.get("/created")
     async def created(_: Request, __: _Empty) -> Response[str]:
         response: Response[str] = Response(status_code=201)
-        response.set_body("created")
+        response.content = "created"
         return response
 
     app = HeavySwag(main_router=router)

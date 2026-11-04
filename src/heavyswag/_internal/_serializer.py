@@ -315,7 +315,7 @@ class Serializer:
             return result
 
         response: Response[Any] = Response()
-        response.set_body(result)
+        response.content = result
         return response
 
     def render(
@@ -325,13 +325,13 @@ class Serializer:
         """A `Response` turned into ASGI-ready (headers, body)."""
         headers = [
             (key.encode("latin-1"), value.encode("latin-1"))
-            for key, value in response.header or ()
+            for key, value in response.headers or ()
         ]
-        for cookie in response.cookie or ():
+        for cookie in response.cookies or ():
             rendered = self.render_cookie(cookie).encode("latin-1")
             headers.append((b"set-cookie", rendered))
 
-        body = self.render_body(response.body)
+        body = self.render_content(response.content)
 
         # RFC 9110: 1xx/204/304 responses must not carry a body or
         # a Content-Length.
@@ -345,7 +345,7 @@ class Serializer:
             )
             if not has_content_type:
                 headers.append(
-                    (b"content-type", self._content_type(response.body))
+                    (b"content-type", self._content_type(response.content))
                 )
             headers.append(
                 (b"content-length", str(len(body)).encode("latin-1"))
@@ -353,28 +353,28 @@ class Serializer:
 
         return headers, body
 
-    def _content_type(self, body: Any) -> bytes:  # noqa: ANN401
-        """Mirrors `render_body`: a `str` is sent as-is, `bytes` as
+    def _content_type(self, content: Any) -> bytes:  # noqa: ANN401
+        """Mirrors `render_content`: a `str` is sent as-is, `bytes` as
         opaque bytes, anything else as JSON."""
-        if isinstance(body, str):
+        if isinstance(content, str):
             return _TEXT_CONTENT_TYPE
 
-        if isinstance(body, bytes):
+        if isinstance(content, bytes):
             return _BINARY_CONTENT_TYPE
 
         return _JSON_CONTENT_TYPE
 
-    def render_body(self, body: Any) -> bytes:  # noqa: ANN401
-        if body is None:
+    def render_content(self, content: Any) -> bytes:  # noqa: ANN401
+        if content is None:
             return b""
 
-        if isinstance(body, bytes):
-            return body
+        if isinstance(content, bytes):
+            return content
 
-        if isinstance(body, str):
-            return body.encode("utf-8")
+        if isinstance(content, str):
+            return content.encode("utf-8")
 
-        return json.dumps(self._to_jsonable(body)).encode("utf-8")
+        return json.dumps(self._to_jsonable(content)).encode("utf-8")
 
     def render_cookie(self, cookie: Cookie) -> str:
         parts = [f"{cookie.key}={cookie.value}"]

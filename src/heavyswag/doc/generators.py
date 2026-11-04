@@ -373,12 +373,12 @@ class _OpenAPIBuilder:
         err_handler = self._app.err_handler
         messages = list(dict.fromkeys(message for _, message in errors))
 
-        if err_handler.body_type is None:
+        if err_handler.schema_type is None:
             media_type = "text/plain"
             schema: dict[str, Any] = {"type": "string"}
         else:
             media_type = "application/json"
-            schema = self._type_schema(err_handler.body_type)
+            schema = self._type_schema(err_handler.schema_type)
 
         examples: dict[str, Any] = {}
         for exc_type, message in errors:
@@ -710,7 +710,9 @@ def _error_example(
     sets may fail; the example is then just left out."""
     try:
         exc = exc_type.__new__(exc_type)
-        return to_jsonable(err_handler.build_body(exc, status_code, message))
+        return to_jsonable(
+            err_handler.build_content(exc, status_code, message)
+        )
     except Exception:  # noqa: BLE001
         return None
 

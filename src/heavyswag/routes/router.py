@@ -43,7 +43,7 @@ class HeavyRouter:
 
     def get[
         In: tuple[ALLOWED_TYPES, ...] | None,
-        Out: ALLOWED_TYPES | tuple[ALLOWED_TYPES] | None,
+        Out: ALLOWED_TYPES | tuple[ALLOWED_TYPES],
         **P,
     ](
         self,
@@ -57,7 +57,7 @@ class HeavyRouter:
 
     def post[
         In: tuple[ALLOWED_TYPES, ...] | None,
-        Out: ALLOWED_TYPES | tuple[ALLOWED_TYPES] | None,
+        Out: ALLOWED_TYPES | tuple[ALLOWED_TYPES],
         **P,
     ](
         self,
@@ -71,7 +71,7 @@ class HeavyRouter:
 
     def put[
         In: tuple[ALLOWED_TYPES, ...] | None,
-        Out: ALLOWED_TYPES | tuple[ALLOWED_TYPES] | None,
+        Out: ALLOWED_TYPES | tuple[ALLOWED_TYPES],
         **P,
     ](
         self,
@@ -85,7 +85,7 @@ class HeavyRouter:
 
     def patch[
         In: tuple[ALLOWED_TYPES, ...] | None,
-        Out: ALLOWED_TYPES | tuple[ALLOWED_TYPES] | None,
+        Out: ALLOWED_TYPES | tuple[ALLOWED_TYPES],
         **P,
     ](
         self,
@@ -99,7 +99,7 @@ class HeavyRouter:
 
     def delete[
         In: tuple[ALLOWED_TYPES, ...] | None,
-        Out: ALLOWED_TYPES | tuple[ALLOWED_TYPES] | None,
+        Out: ALLOWED_TYPES | tuple[ALLOWED_TYPES],
         **P,
     ](
         self,
@@ -173,7 +173,7 @@ class HeavyRouter:
 
     def _add_route[
         In: tuple[ALLOWED_TYPES, ...] | None,
-        Out: ALLOWED_TYPES | tuple[ALLOWED_TYPES] | None,
+        Out: ALLOWED_TYPES | tuple[ALLOWED_TYPES],
         **P,
     ](
         self,
