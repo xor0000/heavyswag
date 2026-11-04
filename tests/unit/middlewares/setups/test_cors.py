@@ -61,7 +61,8 @@ async def test_allowed_origin_attaches_headers() -> None:
     ) in response.headers
     assert ("Vary", "Origin") in response.headers
     assert not any(
-        key == "Access-Control-Allow-Credentials" for key, _ in response.headers
+        key == "Access-Control-Allow-Credentials"
+        for key, _ in response.headers
     )
 
 
